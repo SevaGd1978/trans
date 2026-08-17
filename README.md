@@ -25,6 +25,22 @@ npm run build
 npm run preview
 ```
 
+## Публикация
+
+### Временно (Cloudflare Quick Tunnel)
+
+```bash
+npm run build
+npx serve -s dist -l 4173
+npx cloudflared tunnel --url http://127.0.0.1:4173
+```
+
+### Постоянно (GitHub Pages)
+
+1. В репозитории: **Settings → Pages → Source = GitHub Actions**
+2. Workflow `.github/workflows/deploy-pages.yml` соберёт сайт
+3. Адрес: `https://sevagd1978.github.io/trans/`
+
 ## Структура
 
 - `src/data/catalog.ts` — каталог опор, материалы, нормы
