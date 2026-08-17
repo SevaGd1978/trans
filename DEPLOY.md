@@ -1,43 +1,31 @@
-# Как опубликовать ОпораСчёт без GitHub Pages
+# Публикация ОпораСчёт
 
-Страница `Settings → Pages` часто **не открывается**, если:
-- вы не вошли в GitHub под владельцем репозитория (`SevaGd1978`);
-- нет прав Admin на репозиторий;
-- открываете ссылку в режиме инкогнито / с другого аккаунта.
+## Активный хостинг (Harvis)
 
-## Вариант 1 — прямо сейчас (уже работает)
+**https://rapid-whistle-278.harvis.page**
 
-Временный публичный URL (Cloudflare Tunnel):
+Обновить сайт:
+
+```bash
+npm run build
+npx harvis ./dist
+```
+
+Чтобы сайт не истёк через 24 часа, откройте claim-ссылку из вывода `harvis` и войдите в аккаунт.
+
+## Cloudflare Tunnel (временный)
 
 **https://suits-anticipated-color-vampire.trycloudflare.com**
 
-## Вариант 2 — постоянный сайт через Vercel (без Pages)
+Работает, пока запущен агент/туннель.
 
-1. Откройте: https://vercel.com/new  
-2. Войдите через GitHub  
-3. Import репозитория `SevaGd1978/trans`  
-4. Framework Preset: Vite  
-5. Build Command: `npm run build`  
-6. Output Directory: `dist`  
-7. Deploy  
+## Vercel / Netlify (постоянно)
 
-Через 1–2 минуты получите постоянный адрес вида `https://trans-….vercel.app`.
+- Vercel: https://vercel.com/new → import `SevaGd1978/trans` → `npm run build` / `dist`
+- Netlify: https://app.netlify.com/start → то же
 
-## Вариант 3 — Netlify
+## GitHub Pages
 
-1. https://app.netlify.com/start  
-2. Import from Git → `SevaGd1978/trans`  
-3. Build: `npm run build`, Publish: `dist`
-
-## Вариант 4 — всё же GitHub Pages
-
-1. Войдите на GitHub как **SevaGd1978**  
-2. Откройте репозиторий → **Settings** (вкладка сверху)  
-3. В левом меню найдите **Pages**  
-4. Source = **GitHub Actions** → Save  
-5. Смержите PR #1  
-
-Готовый workflow уже есть: `.github/workflows/deploy-pages.yml`  
-Ожидаемый адрес: `https://sevagd1978.github.io/trans/`
-
-Статическая сборка также лежит в ветке `deploy` (для CDN/ручной загрузки).
+Нужны права Admin: Settings → Pages → Source = GitHub Actions.  
+Workflow: `.github/workflows/deploy-pages.yml`  
+Адрес: `https://sevagd1978.github.io/trans/`
