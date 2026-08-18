@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { BomItem, CalcParams, LaborOp, Material, SavedCalculation } from '../types'
+import type {
+  BomItem,
+  CalcParams,
+  CustomSupportDims,
+  LaborOp,
+  Material,
+  SavedCalculation,
+  SupportSource,
+} from '../types'
 import {
   CATALOG,
   COATING_LABELS,
   SLIDE_LABELS,
+  buildCustomBom,
   buildDefaultBom,
   buildDefaultLabor,
+  customToSupport,
+  defaultCustomDims,
+  estimateFromDn,
+  plateMassFromGeometry,
+  resolveCustomMass,
 } from '../data/catalog'
 import { computeBreakdown, formatRub, formatRubExact, materialLineCost } from '../lib/calc'
 import { saveCalculation } from '../lib/storage'
@@ -20,44 +34,78 @@ interface Props {
 
 const STEPS = ['Параметры', 'BOM', 'Трудозатраты', 'Итог'] as const
 
-export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: Props) {
+function initialParams(preselectId: string | null): CalcParams {
+  if (preselectId === 'custom') {
+    const custom = defaultCustomDims(159)
+    return {
+      source: 'custom',
+      catalogId: CATALOG[0].id,
+      custom,
+      quantity: 10,
+      coating: 'primer',
+      slidePair: estimateFromDn(159).slidePair,
+      overheadPct: 18,
+      shopPct: 25,
+      packingPerUnit: 120,
+    }
+  }
   const initial = CATALOG.find((c) => c.id === preselectId) ?? CATALOG[0]
-  const [step, setStep] = useState(0)
-  const [params, setParams] = useState<CalcParams>({
+  return {
+    source: 'catalog',
     catalogId: initial.id,
+    custom: defaultCustomDims(initial.dn),
     quantity: 10,
     coating: 'primer',
     slidePair: initial.slidePair,
     overheadPct: 18,
     shopPct: 25,
     packingPerUnit: 120,
+  }
+}
+
+export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: Props) {
+  const [step, setStep] = useState(0)
+  const [params, setParams] = useState<CalcParams>(() => initialParams(preselectId))
+  const [bom, setBom] = useState<BomItem[]>(() => {
+    const p = initialParams(preselectId)
+    if (p.source === 'custom') return buildCustomBom(p.custom, p.slidePair)
+    const s = CATALOG.find((c) => c.id === p.catalogId) ?? CATALOG[0]
+    return buildDefaultBom(s, p.slidePair)
   })
-  const [bom, setBom] = useState<BomItem[]>(() =>
-    buildDefaultBom(initial, initial.slidePair),
-  )
-  const [labor, setLabor] = useState<LaborOp[]>(() =>
-    buildDefaultLabor(initial, 'primer'),
-  )
+  const [labor, setLabor] = useState<LaborOp[]>(() => {
+    const p = initialParams(preselectId)
+    const support =
+      p.source === 'custom'
+        ? customToSupport(p.custom, p.slidePair)
+        : (CATALOG.find((c) => c.id === p.catalogId) ?? CATALOG[0])
+    return buildDefaultLabor(support, p.coating)
+  })
   const [savedFlash, setSavedFlash] = useState(false)
 
-  const support = useMemo(
-    () => CATALOG.find((c) => c.id === params.catalogId) ?? CATALOG[0],
-    [params.catalogId],
+  const support = useMemo(() => {
+    if (params.source === 'custom') return customToSupport(params.custom, params.slidePair)
+    return CATALOG.find((c) => c.id === params.catalogId) ?? CATALOG[0]
+  }, [params])
+
+  const plateMassPreview = plateMassFromGeometry(
+    params.custom.plateLengthMm,
+    params.custom.plateWidthMm,
+    params.custom.plateThicknessMm,
   )
 
   useEffect(() => {
     if (!preselectId) return
-    const found = CATALOG.find((c) => c.id === preselectId)
-    if (!found) return
-    setParams((p) => ({
-      ...p,
-      catalogId: found.id,
-      slidePair: found.slidePair,
-    }))
-    setBom(buildDefaultBom(found, found.slidePair))
-    setLabor(buildDefaultLabor(found, params.coating))
+    const next = initialParams(preselectId)
+    setParams(next)
+    if (next.source === 'custom') {
+      setBom(buildCustomBom(next.custom, next.slidePair))
+      setLabor(buildDefaultLabor(customToSupport(next.custom, next.slidePair), next.coating))
+    } else {
+      const found = CATALOG.find((c) => c.id === next.catalogId) ?? CATALOG[0]
+      setBom(buildDefaultBom(found, found.slidePair))
+      setLabor(buildDefaultLabor(found, next.coating))
+    }
     setStep(0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectId])
 
   const breakdown = useMemo(
@@ -65,17 +113,96 @@ export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: P
     [params, bom, labor, support.massKg, materials],
   )
 
+  const rebuildFromCustom = (
+    custom: CustomSupportDims,
+    slidePair = params.slidePair,
+    coating = params.coating,
+  ) => {
+    const resolved = { ...custom, massKg: resolveCustomMass(custom) }
+    setParams((p) => ({ ...p, source: 'custom', custom: resolved, slidePair }))
+    setBom(buildCustomBom(resolved, slidePair))
+    setLabor(buildDefaultLabor(customToSupport(resolved, slidePair), coating))
+  }
+
+  const setSource = (source: SupportSource) => {
+    if (source === 'custom') {
+      if (params.source === 'custom') return
+      const cat = CATALOG.find((c) => c.id === params.catalogId) ?? CATALOG[0]
+      const est = estimateFromDn(cat.dn)
+      const base: CustomSupportDims = {
+        name: `${cat.name} (копия)`,
+        dn: cat.dn,
+        loadKn: cat.loadKn,
+        travelMm: cat.travelMm,
+        massKg: cat.massKg,
+        massMode: 'geometry',
+        bodyMassKg: +(cat.massKg * 0.72).toFixed(2),
+        plateLengthMm: est.plateLengthMm,
+        plateWidthMm: est.plateWidthMm,
+        plateThicknessMm: est.plateThicknessMm,
+        boltCount: est.boltCount,
+      }
+      rebuildFromCustom(base, cat.slidePair)
+      return
+    }
+    const found = CATALOG.find((c) => c.id === params.catalogId) ?? CATALOG[0]
+    setParams((p) => ({
+      ...p,
+      source: 'catalog',
+      slidePair: found.slidePair,
+    }))
+    setBom(buildDefaultBom(found, found.slidePair))
+    setLabor(buildDefaultLabor(found, params.coating))
+  }
+
   const applySupport = (catalogId: string) => {
     const next = CATALOG.find((c) => c.id === catalogId)
     if (!next) return
-    setParams((p) => ({ ...p, catalogId, slidePair: next.slidePair }))
+    setParams((p) => ({
+      ...p,
+      source: 'catalog',
+      catalogId,
+      slidePair: next.slidePair,
+      custom: { ...defaultCustomDims(next.dn), name: `${next.name} (копия)` },
+    }))
     setBom(buildDefaultBom(next, next.slidePair))
     setLabor(buildDefaultLabor(next, params.coating))
   }
 
+  const patchCustom = (patch: Partial<CustomSupportDims>, reestimate = false) => {
+    let next: CustomSupportDims = { ...params.custom, ...patch }
+    if (reestimate && patch.dn != null) {
+      const est = estimateFromDn(patch.dn)
+      next = {
+        ...next,
+        name: next.name.includes('Ду')
+          ? `Опора скользящая Ду${patch.dn} (свои размеры)`
+          : next.name,
+        loadKn: est.loadKn,
+        travelMm: est.travelMm,
+        massKg: est.massKg,
+        bodyMassKg: est.bodyMassKg,
+        plateLengthMm: est.plateLengthMm,
+        plateWidthMm: est.plateWidthMm,
+        plateThicknessMm: est.plateThicknessMm,
+        boltCount: est.boltCount,
+      }
+      rebuildFromCustom(next, est.slidePair)
+      return
+    }
+    if (next.massMode === 'geometry') {
+      next = { ...next, massKg: resolveCustomMass(next) }
+    }
+    rebuildFromCustom(next)
+  }
+
   const applySlidePair = (slidePair: CalcParams['slidePair']) => {
     setParams((p) => ({ ...p, slidePair }))
-    setBom(buildDefaultBom(support, slidePair))
+    if (params.source === 'custom') {
+      setBom(buildCustomBom(params.custom, slidePair))
+    } else {
+      setBom(buildDefaultBom(support, slidePair))
+    }
   }
 
   const applyCoating = (coating: CalcParams['coating']) => {
@@ -129,7 +256,7 @@ export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: P
       <div className="panel-head">
         <div>
           <h2>Калькулятор себестоимости</h2>
-          <p className="muted">Мастер: параметры → BOM → трудозатраты → итог</p>
+          <p className="muted">Каталог или свои размеры → BOM → трудозатраты → итог</p>
         </div>
         <div className="stepper" role="tablist" aria-label="Шаги расчёта">
           {STEPS.map((label, i) => (
@@ -150,19 +277,195 @@ export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: P
 
       {step === 0 && (
         <div className="form-grid">
-          <label className="field">
-            <span>Типоразмер из каталога</span>
-            <select
-              value={params.catalogId}
-              onChange={(e) => applySupport(e.target.value)}
+          <div className="source-switch" role="group" aria-label="Источник опоры">
+            <button
+              type="button"
+              className={params.source === 'catalog' ? 'source-btn is-active' : 'source-btn'}
+              onClick={() => setSource('catalog')}
             >
-              {CATALOG.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.series} · Ду{c.dn} · {c.massKg} кг · {c.loadKn} кН
-                </option>
-              ))}
-            </select>
-          </label>
+              Из каталога
+            </button>
+            <button
+              type="button"
+              className={params.source === 'custom' ? 'source-btn is-active' : 'source-btn'}
+              onClick={() => setSource('custom')}
+            >
+              Свои размеры
+            </button>
+          </div>
+
+          {params.source === 'catalog' ? (
+            <label className="field field-wide">
+              <span>Типоразмер из каталога</span>
+              <select
+                value={params.catalogId}
+                onChange={(e) => applySupport(e.target.value)}
+              >
+                {CATALOG.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.series} · Ду{c.dn} · {c.massKg} кг · {c.loadKn} кН
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <label className="field field-wide">
+                <span>Наименование</span>
+                <input
+                  type="text"
+                  value={params.custom.name}
+                  onChange={(e) => patchCustom({ name: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Dн / Ду, мм</span>
+                <input
+                  type="number"
+                  min={20}
+                  max={1200}
+                  value={params.custom.dn}
+                  onChange={(e) =>
+                    patchCustom({ dn: Math.max(20, Number(e.target.value) || 20) }, true)
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Нагрузка, кН</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={params.custom.loadKn}
+                  onChange={(e) =>
+                    patchCustom({ loadKn: Math.max(0, Number(e.target.value) || 0) })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Ход скольжения, мм</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={params.custom.travelMm}
+                  onChange={(e) =>
+                    patchCustom({ travelMm: Math.max(0, Number(e.target.value) || 0) })
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>Крепёж, шт</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={params.custom.boltCount}
+                  onChange={(e) =>
+                    patchCustom({ boltCount: Math.max(0, Number(e.target.value) || 0) })
+                  }
+                />
+              </label>
+
+              <div className="mass-mode field-wide">
+                <span className="mass-mode-label">Как задать массу / металл</span>
+                <div className="source-switch compact">
+                  <button
+                    type="button"
+                    className={
+                      params.custom.massMode === 'geometry' ? 'source-btn is-active' : 'source-btn'
+                    }
+                    onClick={() => patchCustom({ massMode: 'geometry' })}
+                  >
+                    По габаритам плиты
+                  </button>
+                  <button
+                    type="button"
+                    className={
+                      params.custom.massMode === 'manual' ? 'source-btn is-active' : 'source-btn'
+                    }
+                    onClick={() => patchCustom({ massMode: 'manual' })}
+                  >
+                    Масса вручную
+                  </button>
+                </div>
+              </div>
+
+              {params.custom.massMode === 'geometry' ? (
+                <>
+                  <label className="field">
+                    <span>Плита: длина, мм</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={params.custom.plateLengthMm}
+                      onChange={(e) =>
+                        patchCustom({
+                          plateLengthMm: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Плита: ширина, мм</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={params.custom.plateWidthMm}
+                      onChange={(e) =>
+                        patchCustom({
+                          plateWidthMm: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Плита: толщина, мм</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={params.custom.plateThicknessMm}
+                      onChange={(e) =>
+                        patchCustom({
+                          plateThicknessMm: Math.max(1, Number(e.target.value) || 1),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Масса корпуса, кг</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={params.custom.bodyMassKg}
+                      onChange={(e) =>
+                        patchCustom({
+                          bodyMassKg: Math.max(0, Number(e.target.value) || 0),
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="geom-hint field-wide">
+                    Плита ≈ {plateMassPreview} кг · итоговая масса ≈ {support.massKg} кг
+                    (ρ = 7850 кг/м³)
+                  </p>
+                </>
+              ) : (
+                <label className="field">
+                  <span>Масса опоры, кг</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={params.custom.massKg}
+                    onChange={(e) =>
+                      patchCustom({ massKg: Math.max(0, Number(e.target.value) || 0) })
+                    }
+                  />
+                </label>
+              )}
+            </>
+          )}
+
           <label className="field">
             <span>Количество, шт</span>
             <input
@@ -419,7 +722,8 @@ export function Calculator({ materials, preselectId, onSaved, onOpenHistory }: P
             </button>
             {savedFlash && <p className="flash">Расчёт сохранён в историю</p>}
             <p className="hint">
-              Проверьте актуальность цен в справочнике материалов перед утверждением КП.
+              Для своих размеров проверьте массу плиты и корпуса — они напрямую влияют на
+              материалы и покрытие.
             </p>
           </div>
         </div>

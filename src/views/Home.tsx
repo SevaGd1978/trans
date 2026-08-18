@@ -1,24 +1,28 @@
 interface Props {
   onStart: () => void
+  onCustom: () => void
   onCatalog: () => void
 }
 
-export function Home({ onStart, onCatalog }: Props) {
+export function Home({ onStart, onCustom, onCatalog }: Props) {
   return (
     <section className="hero">
       <div className="hero-copy">
         <p className="brand-hero">ОпораСчёт</p>
         <h1>Себестоимость скользящей опоры — от типоразмера до калькуляции</h1>
         <p className="lede">
-          Подберите опору из каталога ОСТ/ТУ, соберите BOM, заложите трудозатраты
-          и получите полную себестоимость партии с выгрузкой в Excel.
+          Возьмите опору из каталога ОСТ/ТУ или задайте свои размеры — Ду, ход,
+          плиту и массу — и получите полную себестоимость партии.
         </p>
         <div className="cta-row">
           <button type="button" className="btn btn-primary" onClick={onStart}>
             Рассчитать опору
           </button>
+          <button type="button" className="btn btn-secondary" onClick={onCustom}>
+            Свои размеры
+          </button>
           <button type="button" className="btn btn-ghost" onClick={onCatalog}>
-            Открыть каталог
+            Каталог
           </button>
         </div>
       </div>

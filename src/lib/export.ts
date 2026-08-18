@@ -10,10 +10,12 @@ export function exportCalculationToExcel(
 ): void {
   const wb = XLSX.utils.book_new()
 
+  const custom = calc.params.custom
   const summary = [
     ['ОпораСчёт — калькуляция себестоимости'],
     ['Название', calc.title],
     ['Опора', calc.supportName],
+    ['Источник', calc.params.source === 'custom' ? 'Свои размеры' : 'Каталог'],
     ['Ду / Dн', calc.dn],
     ['Дата', new Date(calc.createdAt).toLocaleString('ru-RU')],
     ['Количество, шт', calc.params.quantity],
@@ -21,6 +23,18 @@ export function exportCalculationToExcel(
     ['Покрытие', COATING_LABELS[calc.params.coating]],
     ['Цеховые, %', calc.params.shopPct],
     ['Накладные, %', calc.params.overheadPct],
+    ...(calc.params.source === 'custom' && custom
+      ? [
+          ['Нагрузка, кН', custom.loadKn],
+          ['Ход, мм', custom.travelMm],
+          ['Масса, кг', custom.massKg],
+          [
+            'Плита, мм',
+            `${custom.plateLengthMm}×${custom.plateWidthMm}×${custom.plateThicknessMm}`,
+          ],
+          ['Масса корпуса, кг', custom.bodyMassKg],
+        ]
+      : []),
     [],
     ['Статья', 'Сумма, руб'],
     ...breakdownRows(calc.breakdown),

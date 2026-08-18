@@ -34,6 +34,7 @@ function App() {
         {view === 'home' && (
           <Home
             onStart={() => openCalculator()}
+            onCustom={() => openCalculator('custom')}
             onCatalog={() => setView('catalog')}
           />
         )}

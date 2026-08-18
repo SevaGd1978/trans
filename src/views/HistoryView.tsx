@@ -36,6 +36,7 @@ export function HistoryView({ items, materials, onChange, onRecalculate }: Props
               <h3>{item.title}</h3>
               <p className="muted">
                 {new Date(item.createdAt).toLocaleString('ru-RU')} ·{' '}
+                {item.params.source === 'custom' ? 'Свои размеры · ' : ''}
                 {COATING_LABELS[item.params.coating]}
               </p>
             </div>
@@ -44,9 +45,13 @@ export function HistoryView({ items, materials, onChange, onRecalculate }: Props
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => onRecalculate(item.params.catalogId)}
+                onClick={() =>
+                  onRecalculate(
+                    item.params.source === 'custom' ? 'custom' : item.params.catalogId,
+                  )
+                }
               >
-                Открыть типоразмер
+                {item.params.source === 'custom' ? 'Свои размеры' : 'Открыть типоразмер'}
               </button>
               <button
                 type="button"

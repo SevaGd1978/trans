@@ -1,7 +1,9 @@
-export type SupportSeries = 'OST-34' | 'TU-36'
+export type SupportSeries = 'OST-34' | 'TU-36' | 'CUSTOM'
 
 export type CoatingType = 'none' | 'primer' | 'hot-zinc' | 'heat-paint'
 export type SlidePair = 'steel-ptfe' | 'steel-steel' | 'graphite'
+export type SupportSource = 'catalog' | 'custom'
+export type MassMode = 'manual' | 'geometry'
 
 export interface Material {
   id: string
@@ -25,6 +27,23 @@ export interface CatalogSupport {
   description: string
 }
 
+/** Габариты и параметры опоры, заданной вручную */
+export interface CustomSupportDims {
+  name: string
+  dn: number
+  loadKn: number
+  travelMm: number
+  /** Итоговая масса опоры (для покрытия и трудозатрат) */
+  massKg: number
+  massMode: MassMode
+  /** Масса корпуса, кг (режим geometry или ручной ввод) */
+  bodyMassKg: number
+  plateLengthMm: number
+  plateWidthMm: number
+  plateThicknessMm: number
+  boltCount: number
+}
+
 export interface BomItem {
   id: string
   name: string
@@ -43,7 +62,9 @@ export interface LaborOp {
 }
 
 export interface CalcParams {
+  source: SupportSource
   catalogId: string
+  custom: CustomSupportDims
   quantity: number
   coating: CoatingType
   slidePair: SlidePair

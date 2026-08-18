@@ -10,8 +10,11 @@ export function CatalogView({ onCalculate }: Props) {
       <div className="panel-head">
         <div>
           <h2>Каталог скользящих опор</h2>
-          <p className="muted">Серии ОСТ 34 и ТУ 36 — типоразмеры для быстрого старта расчёта</p>
+          <p className="muted">Серии ОСТ 34 и ТУ 36 — или задайте свои размеры в калькуляторе</p>
         </div>
+        <button type="button" className="btn btn-primary" onClick={() => onCalculate('custom')}>
+          Свои размеры
+        </button>
       </div>
       <div className="catalog-list">
         {CATALOG.map((item) => (

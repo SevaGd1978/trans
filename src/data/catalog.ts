@@ -1,4 +1,14 @@
-import type { CatalogSupport, Material, LaborOp, BomItem, CoatingType, SlidePair } from '../types'
+import type {
+  CatalogSupport,
+  Material,
+  LaborOp,
+  BomItem,
+  CoatingType,
+  SlidePair,
+  CustomSupportDims,
+} from '../types'
+
+export const STEEL_DENSITY = 7850
 
 export const MATERIALS: Material[] = [
   {
@@ -7,7 +17,7 @@ export const MATERIALS: Material[] = [
     grade: 'Ст3сп',
     unit: 'kg',
     price: 92,
-    density: 7850,
+    density: STEEL_DENSITY,
     updatedAt: '2026-08-01',
   },
   {
@@ -16,7 +26,7 @@ export const MATERIALS: Material[] = [
     grade: '09Г2С',
     unit: 'kg',
     price: 118,
-    density: 7850,
+    density: STEEL_DENSITY,
     updatedAt: '2026-08-01',
   },
   {
@@ -146,6 +156,106 @@ const LABOR_BASE: Omit<LaborOp, 'hours'>[] = [
   { id: 'qc', name: 'Контроль качества', rate: 650 },
 ]
 
+/** Масса плиты по габаритам, кг (мм → м³ × плотность) */
+export function plateMassFromGeometry(
+  lengthMm: number,
+  widthMm: number,
+  thicknessMm: number,
+  density = STEEL_DENSITY,
+): number {
+  const volumeM3 = (lengthMm * widthMm * thicknessMm) / 1e9
+  return +(volumeM3 * density).toFixed(2)
+}
+
+/** Оценка параметров по Ду по ближайшим точкам каталога (линейная интерполяция) */
+export function estimateFromDn(dn: number): {
+  loadKn: number
+  travelMm: number
+  massKg: number
+  slidePair: SlidePair
+  boltCount: number
+  plateLengthMm: number
+  plateWidthMm: number
+  plateThicknessMm: number
+  bodyMassKg: number
+} {
+  const sorted = [...CATALOG].sort((a, b) => a.dn - b.dn)
+  const clampDn = Math.max(sorted[0].dn, Math.min(sorted[sorted.length - 1].dn, dn))
+
+  let lo = sorted[0]
+  let hi = sorted[sorted.length - 1]
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (clampDn >= sorted[i].dn && clampDn <= sorted[i + 1].dn) {
+      lo = sorted[i]
+      hi = sorted[i + 1]
+      break
+    }
+  }
+
+  const t = hi.dn === lo.dn ? 0 : (clampDn - lo.dn) / (hi.dn - lo.dn)
+  const lerp = (a: number, b: number) => +(a + (b - a) * t).toFixed(2)
+  const massKg = lerp(lo.massKg, hi.massKg)
+  const plateLengthMm = Math.round(dn * 1.35 + 40)
+  const plateWidthMm = Math.round(dn * 0.85 + 30)
+  const plateThicknessMm = dn >= 159 ? 16 : 12
+  const plateMass = plateMassFromGeometry(plateLengthMm, plateWidthMm, plateThicknessMm)
+  const bodyMassKg = +Math.max(1, massKg - plateMass * 0.9).toFixed(2)
+
+  return {
+    loadKn: lerp(lo.loadKn, hi.loadKn),
+    travelMm: Math.round(lerp(lo.travelMm, hi.travelMm)),
+    massKg,
+    slidePair: clampDn >= 250 ? 'graphite' : clampDn >= 200 ? 'steel-steel' : 'steel-ptfe',
+    boltCount: clampDn >= 159 ? 8 : 4,
+    plateLengthMm,
+    plateWidthMm,
+    plateThicknessMm,
+    bodyMassKg,
+  }
+}
+
+export function defaultCustomDims(dn = 159): CustomSupportDims {
+  const est = estimateFromDn(dn)
+  return {
+    name: `Опора скользящая Ду${dn} (свои размеры)`,
+    dn,
+    loadKn: est.loadKn,
+    travelMm: est.travelMm,
+    massKg: est.massKg,
+    massMode: 'geometry',
+    bodyMassKg: est.bodyMassKg,
+    plateLengthMm: est.plateLengthMm,
+    plateWidthMm: est.plateWidthMm,
+    plateThicknessMm: est.plateThicknessMm,
+    boltCount: est.boltCount,
+  }
+}
+
+export function resolveCustomMass(dims: CustomSupportDims): number {
+  if (dims.massMode === 'manual') return Math.max(0, dims.massKg)
+  const plate = plateMassFromGeometry(
+    dims.plateLengthMm,
+    dims.plateWidthMm,
+    dims.plateThicknessMm,
+  )
+  return +(dims.bodyMassKg + plate).toFixed(2)
+}
+
+export function customToSupport(dims: CustomSupportDims, slidePair: SlidePair): CatalogSupport {
+  const massKg = resolveCustomMass(dims)
+  return {
+    id: 'custom',
+    series: 'CUSTOM',
+    name: dims.name.trim() || `Опора скользящая Ду${dims.dn}`,
+    dn: dims.dn,
+    loadKn: dims.loadKn,
+    travelMm: dims.travelMm,
+    slidePair,
+    massKg,
+    description: `Свои размеры: плита ${dims.plateLengthMm}×${dims.plateWidthMm}×${dims.plateThicknessMm} мм, ход ${dims.travelMm} мм.`,
+  }
+}
+
 export function buildDefaultBom(support: CatalogSupport, slidePair: SlidePair): BomItem[] {
   const steelId = support.dn >= 159 ? '09g2s' : 'st3'
   const bodyMass = +(support.massKg * 0.72).toFixed(2)
@@ -194,6 +304,60 @@ export function buildDefaultBom(support: CatalogSupport, slidePair: SlidePair): 
   return items
 }
 
+export function buildCustomBom(dims: CustomSupportDims, slidePair: SlidePair): BomItem[] {
+  const steelId = dims.dn >= 159 ? '09g2s' : 'st3'
+  const plateMass =
+    dims.massMode === 'geometry'
+      ? plateMassFromGeometry(dims.plateLengthMm, dims.plateWidthMm, dims.plateThicknessMm)
+      : +(dims.massKg * 0.18).toFixed(2)
+  const bodyMass =
+    dims.massMode === 'geometry'
+      ? dims.bodyMassKg
+      : +(dims.massKg * 0.72).toFixed(2)
+  const insertId =
+    slidePair === 'graphite' ? 'graphite' : slidePair === 'steel-ptfe' ? 'ptfe' : ''
+
+  const items: BomItem[] = [
+    {
+      id: 'body',
+      name: 'Корпус опоры',
+      materialId: steelId,
+      qty: bodyMass,
+      unit: 'kg',
+      wasteFactor: 1.08,
+    },
+    {
+      id: 'plate',
+      name: 'Плита скольжения',
+      materialId: steelId,
+      qty: plateMass,
+      unit: 'kg',
+      wasteFactor: 1.05,
+    },
+    {
+      id: 'bolts',
+      name: 'Крепёж М16',
+      materialId: 'bolt-m16',
+      qty: Math.max(0, Math.round(dims.boltCount)),
+      unit: 'pcs',
+      wasteFactor: 1,
+    },
+  ]
+
+  if (insertId) {
+    items.splice(2, 0, {
+      id: 'insert',
+      name: slidePair === 'graphite' ? 'Вкладыш графитовый' : 'Вкладыш Ф-4',
+      materialId: insertId,
+      qty: 1,
+      unit: 'pcs',
+      wasteFactor: 1,
+    })
+  }
+
+  return items
+}
+
 export function buildDefaultLabor(support: CatalogSupport, coating: CoatingType): LaborOp[] {
   const scale = Math.max(0.7, support.massKg / 20)
   return LABOR_BASE.map((op) => {
@@ -223,4 +387,5 @@ export const SLIDE_LABELS: Record<SlidePair, string> = {
 export const SERIES_LABELS: Record<string, string> = {
   'OST-34': 'ОСТ 34',
   'TU-36': 'ТУ 36',
+  CUSTOM: 'Свои размеры',
 }
