@@ -27,10 +27,10 @@ npm run preview
 
 ## Публикация
 
-**Онлайн:** https://rapid-whistle-278.harvis.page
+**Онлайн (ShipStatic):** https://chrome-dust-n7h2f5a.shipstatic.com
 
 ```bash
-npm run deploy:harvis
+npm run deploy:ship
 ```
 
 Подробности: [DEPLOY.md](./DEPLOY.md)

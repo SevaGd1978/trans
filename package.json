@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy:harvis": "npm run build && harvis ./dist"
+    "deploy:harvis": "npm run build && harvis ./dist",
+    "deploy:ship": "npm run build && npx @shipstatic/ship ./dist"
   },
   "dependencies": {
     "file-saver": "^2.0.5",

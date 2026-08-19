@@ -1,23 +1,34 @@
 # Публикация ОпораСчёт
 
-## Активный хостинг (Harvis)
+## Активный хостинг (ShipStatic) — другой ресурс
 
-**https://rapid-whistle-278.harvis.page**
+**https://chrome-dust-n7h2f5a.shipstatic.com**
 
-Обновить сайт:
+Закрепить насовсем (claim):  
+https://my.shipstatic.com/claim/b02b928b08426e12c646cdd9d8c42bf9  
+
+Анонимный деплой живёт **3 дня**. Обновить:
 
 ```bash
 npm run build
-npx harvis ./dist
+npx @shipstatic/ship ./dist
 ```
 
-Чтобы сайт не истёк через 24 часа, откройте claim-ссылку из вывода `harvis` и войдите в аккаунт.
+## Запасной (Nivii)
 
-## Cloudflare Tunnel (временный)
+**https://gvto3mgl.nivii.app** · истекает ~26.08.2026
 
-**https://suits-anticipated-color-vampire.trycloudflare.com**
+```bash
+npx nivii share --dir ./dist --no-build --no-open --no-qr --expires 7d
+```
 
-Работает, пока запущен агент/туннель.
+## Harvis (предыдущий)
+
+**https://rapid-whistle-278.harvis.page**
+
+```bash
+npm run deploy:harvis
+```
 
 ## Vercel / Netlify (постоянно)
 
@@ -27,5 +38,4 @@ npx harvis ./dist
 ## GitHub Pages
 
 Нужны права Admin: Settings → Pages → Source = GitHub Actions.  
-Workflow: `.github/workflows/deploy-pages.yml`  
 Адрес: `https://sevagd1978.github.io/trans/`
