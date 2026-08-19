@@ -1,0 +1,15 @@
+# Конфигурация Amvera Cloud для ОпораСчёт (Vite + React SPA)
+# Документация: https://docs.amvera.ru/applications/environments/nodejs-browser.html
+
+meta:
+  environment: node
+  toolchain:
+    name: browser
+    version: "22"
+
+build:
+  # По умолчанию: npm install && npm run build
+  artifacts:
+    "dist/*": /
+
+# run: nginx SPA (встроенный образ Amvera), параметры не требуются
