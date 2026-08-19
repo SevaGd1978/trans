@@ -27,13 +27,14 @@ npm run preview
 
 ## Публикация
 
-**Онлайн (ShipStatic):** https://chrome-dust-n7h2f5a.shipstatic.com
+**Amvera:** добавлен `amvera.yml` — создайте приложение на https://amvera.ru и сделайте `git push amvera HEAD:master` (см. [DEPLOY.md](./DEPLOY.md)).
+
+**Сейчас онлайн (ShipStatic):** https://chrome-dust-n7h2f5a.shipstatic.com
 
 ```bash
 npm run deploy:ship
 ```
 
-Подробности: [DEPLOY.md](./DEPLOY.md)
 
 ## Структура
 
