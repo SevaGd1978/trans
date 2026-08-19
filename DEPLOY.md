@@ -2,6 +2,11 @@
 
 ## Amvera Cloud
 
+**Онлайн:** https://oporascet-sevagd1978.amvera.io
+
+Git: `https://git.amvera.ru/sevagd1978/oporascet`
+
+
 В репозитории уже есть `amvera.yml` (Node.js Browser → сборка Vite → `dist`).
 
 ### Как задеплоить

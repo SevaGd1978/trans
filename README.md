@@ -27,7 +27,7 @@ npm run preview
 
 ## Публикация
 
-**Amvera:** добавлен `amvera.yml` — создайте приложение на https://amvera.ru и сделайте `git push amvera HEAD:master` (см. [DEPLOY.md](./DEPLOY.md)).
+**Amvera:** https://oporascet-sevagd1978.amvera.io — добавлен `amvera.yml` — создайте приложение на https://amvera.ru и сделайте `git push amvera HEAD:master` (см. [DEPLOY.md](./DEPLOY.md)).
 
 **Сейчас онлайн (ShipStatic):** https://chrome-dust-n7h2f5a.shipstatic.com
 
