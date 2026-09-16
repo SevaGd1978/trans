@@ -86,20 +86,22 @@ export function byCategory(
   return map;
 }
 
-export function budgetTotal(line: BudgetLine, month?: number): number {
-  if (month === undefined) return sum(line.months);
-  return line.months[month] ?? 0;
+export function budgetTotal(line: BudgetLine, month?: number, throughMonth?: number): number {
+  if (month !== undefined) return line.months[month] ?? 0;
+  if (throughMonth !== undefined) return sum(line.months.slice(0, throughMonth + 1));
+  return sum(line.months);
 }
 
 export function budgetMap(
   lines: BudgetLine[],
   year: number,
   month?: number,
+  throughMonth?: number,
 ): Record<string, number> {
   const map: Record<string, number> = {};
   for (const line of lines) {
     if (line.year !== year) continue;
-    map[line.categoryId] = budgetTotal(line, month);
+    map[line.categoryId] = budgetTotal(line, month, throughMonth);
   }
   return map;
 }
@@ -111,11 +113,14 @@ export function planFactRows(
   year: number,
   month?: number,
   kind: "income" | "expense" = "expense",
+  throughMonth?: number,
 ) {
-  const plan = budgetMap(lines, year, month);
+  const plan = budgetMap(lines, year, month, throughMonth);
   const scoped =
     month === undefined
-      ? yearTransactions(transactions, year)
+      ? yearTransactions(transactions, year).filter((tx) =>
+          throughMonth === undefined ? true : monthIndex(tx.date).month <= throughMonth,
+        )
       : monthTransactions(transactions, year, month);
   const actual = byCategory(scoped, kind);
   return categories
@@ -172,6 +177,12 @@ export function applyScenario(
     profit: roundMoney(adjustedIncome - expense),
     byCategory,
   };
+}
+
+export function elapsedMonth(year: number, now = new Date()): number {
+  if (year < now.getFullYear()) return 11;
+  if (year > now.getFullYear()) return 0;
+  return now.getMonth();
 }
 
 export function executionPercent(plan: number, actual: number): number {

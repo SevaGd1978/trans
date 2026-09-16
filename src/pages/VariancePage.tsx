@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { StatCard } from "../components/Layout";
-import { executionPercent, planFactRows, sum } from "../lib/calc";
+import { executionPercent, planFactRows, sum, elapsedMonth } from "../lib/calc";
 import { money, percent, signedMoney } from "../lib/format";
 import { useApp } from "../store";
 import { MONTHS_FULL } from "../types";
@@ -11,12 +11,13 @@ export function VariancePage() {
   const budget = useApp((s) => s.budget);
   const transactions = useApp((s) => s.transactions);
   const [kind, setKind] = useState<"expense" | "income">("expense");
-  const [month, setMonth] = useState<number | "ytd">("ytd");
-
-  const monthIndex = month === "ytd" ? undefined : month;
+  const [period, setPeriod] = useState<"ytd" | "year" | number>("ytd");
+  const through = elapsedMonth(year);
+  const monthIndex = typeof period === "number" ? period : undefined;
+  const throughMonth = period === "ytd" ? through : undefined;
   const rows = useMemo(
-    () => planFactRows(categories, budget, transactions, year, monthIndex, kind),
-    [categories, budget, transactions, year, monthIndex, kind],
+    () => planFactRows(categories, budget, transactions, year, monthIndex, kind, throughMonth),
+    [categories, budget, transactions, year, monthIndex, kind, throughMonth],
   );
   const plan = sum(rows.map((r) => r.plan));
   const actual = sum(rows.map((r) => r.actual));
@@ -43,13 +44,17 @@ export function VariancePage() {
           <div className="mb-1 text-muted">Период</div>
           <select
             className="rounded-xl border border-line bg-white px-3 py-2.5"
-            value={month}
+            value={String(period)}
             onChange={(e) => {
               const v = e.target.value;
-              setMonth(v === "ytd" ? "ytd" : Number(v));
+              if (v === "ytd" || v === "year") setPeriod(v);
+              else setPeriod(Number(v));
             }}
           >
-            <option value="ytd">Весь {year}</option>
+            <option value="ytd">
+              Янв — {MONTHS_FULL[through]} (нараст.)
+            </option>
+            <option value="year">Весь {year}</option>
             {MONTHS_FULL.map((label, i) => (
               <option key={label} value={i}>
                 {label}

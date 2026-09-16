@@ -5,15 +5,20 @@ import { money, uid } from "../lib/format";
 import { useApp } from "../store";
 import type { Transaction, TxType } from "../types";
 
-const emptyTx = (year: number): Transaction => ({
-  id: uid("tx"),
-  type: "expense",
-  date: `${year}-09-16`,
-  amount: 0,
-  categoryId: "exp-fuel",
-  counterparty: "",
-  comment: "",
-});
+const emptyTx = (year: number): Transaction => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return {
+    id: uid("tx"),
+    type: "expense",
+    date: `${year}-${month}-${day}`,
+    amount: 0,
+    categoryId: "exp-fuel",
+    counterparty: "",
+    comment: "",
+  };
+};
 
 export function LedgerPage() {
   const year = useApp((s) => s.year);

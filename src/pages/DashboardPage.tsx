@@ -12,14 +12,7 @@ import {
 } from "recharts";
 import { AlertTriangle, Wrench } from "lucide-react";
 import { StatCard } from "../components/Layout";
-import {
-  budgetMap,
-  byCategory,
-  executionPercent,
-  monthlySeries,
-  totals,
-  yearTransactions,
-} from "../lib/calc";
+import { elapsedMonth, monthlySeries, totals, yearTransactions, budgetMap, byCategory, executionPercent } from "../lib/calc";
 import { money, moneyCompact, VEHICLE_STATUS_LABEL } from "../lib/format";
 import { useApp } from "../store";
 import { MONTHS } from "../types";
@@ -75,7 +68,7 @@ export function DashboardPage() {
     alerts.push(`Простой: ${idle.map((v) => v.plate).join(", ")} — не приносит выручку.`);
   }
 
-  const monthNow = year === 2026 ? 8 : 11;
+  const monthNow = elapsedMonth(year);
   const ytdPlanExpense = expenseCats.reduce((acc, id) => {
     const line = budget.find((l) => l.year === year && l.categoryId === id);
     if (!line) return acc;

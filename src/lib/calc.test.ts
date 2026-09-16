@@ -122,6 +122,39 @@ describe("planFactRows", () => {
     expect(rows[0].actual).toBe(150);
     expect(rows[0].amount).toBe(50);
   });
+
+  it("считает план нарастающим итогом по март", () => {
+    const rows = planFactRows(
+      categories,
+      [{ id: "b1", categoryId: "exp-fuel", year: 2026, months: Array(12).fill(100) }],
+      [
+        {
+          id: "t1",
+          type: "expense",
+          date: "2026-02-01",
+          amount: 150,
+          categoryId: "exp-fuel",
+          counterparty: "x",
+          comment: "",
+        },
+        {
+          id: "t2",
+          type: "expense",
+          date: "2026-05-01",
+          amount: 999,
+          categoryId: "exp-fuel",
+          counterparty: "x",
+          comment: "",
+        },
+      ],
+      2026,
+      undefined,
+      "expense",
+      2,
+    );
+    expect(rows[0].plan).toBe(300);
+    expect(rows[0].actual).toBe(150);
+  });
 });
 
 describe("applyScenario", () => {
