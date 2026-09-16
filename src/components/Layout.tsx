@@ -48,8 +48,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const title = TITLES[location.pathname] ?? "Магистраль";
 
   return (
-    <div className="min-h-screen bg-paper text-ink lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="border-b border-white/10 bg-sidebar text-paper lg:min-h-screen lg:border-b-0 lg:border-r lg:border-white/10">
+    <div className="min-h-screen bg-paper text-ink lg:grid lg:h-screen lg:grid-cols-[260px_1fr] lg:overflow-hidden">
+      <aside className="border-b border-white/10 bg-sidebar text-paper lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-white/10">
         <div className="flex items-center gap-3 px-5 py-5">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-white shadow-[0_8px_20px_rgb(196,92,38,0.35)]">
             <Truck size={22} />
@@ -101,7 +101,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <div className="min-w-0">
+      <div className="min-w-0 lg:h-screen lg:overflow-y-auto">
         <header className="sticky top-0 z-20 border-b border-line bg-paper/90 backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 lg:px-8">
             <div>
