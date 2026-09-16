@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
+import { FuelImportModal } from "../components/FuelImportModal";
 import { Field, GhostButton, Modal, PrimaryButton, inputClass } from "../components/ui";
 import { yearTransactions } from "../lib/calc";
-import { money, uid } from "../lib/format";
+import { money, numberRu, uid } from "../lib/format";
 import { useApp } from "../store";
 import type { Transaction, TxType } from "../types";
 
@@ -33,6 +34,7 @@ export function LedgerPage() {
   const [vehicleId, setVehicleId] = useState("all");
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const rows = useMemo(() => {
     return yearTransactions(transactions, year)
@@ -86,6 +88,9 @@ export function LedgerPage() {
           <div className="mb-1 text-muted">Поиск</div>
           <input className={inputClass} value={q} onChange={(e) => setQ(e.target.value)} placeholder="контрагент, комментарий" />
         </label>
+        <GhostButton type="button" onClick={() => setImportOpen(true)}>
+          Импорт заправок Excel
+        </GhostButton>
         <PrimaryButton onClick={() => setEditing(emptyTx(year))}>Новая операция</PrimaryButton>
       </div>
 
@@ -97,6 +102,7 @@ export function LedgerPage() {
               <th className="px-4 py-3">Статья</th>
               <th className="px-4 py-3">Контрагент</th>
               <th className="px-4 py-3">ТС</th>
+              <th className="px-4 py-3 text-right">Литры / пробег</th>
               <th className="px-4 py-3 text-right">Сумма</th>
               <th className="px-4 py-3" />
             </tr>
@@ -111,6 +117,18 @@ export function LedgerPage() {
                 </td>
                 <td className="px-4 py-2">{tx.counterparty}</td>
                 <td className="px-4 py-2 text-muted">{plate(tx.vehicleId)}</td>
+                <td className="num px-4 py-2 text-right text-muted">
+                  {tx.liters != null ? (
+                    <>
+                      {numberRu(tx.liters, 1)} л
+                      {tx.odometer != null ? (
+                        <div className="text-xs">{numberRu(tx.odometer)} км</div>
+                      ) : null}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className={`num px-4 py-2 text-right font-semibold ${tx.type === "income" ? "text-teal" : "text-accent"}`}>
                   {tx.type === "income" ? "+" : "−"}
                   {money(tx.amount)}
@@ -223,6 +241,39 @@ export function LedgerPage() {
                 onChange={(e) => setEditing({ ...editing, comment: e.target.value })}
               />
             </Field>
+            {editing.categoryId === "exp-fuel" ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Литры">
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={editing.liters ?? ""}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        liters: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="Показания, км">
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={0}
+                    value={editing.odometer ?? ""}
+                    onChange={(e) =>
+                      setEditing({
+                        ...editing,
+                        odometer: e.target.value === "" ? undefined : Number(e.target.value),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2 pt-2">
               <GhostButton type="button" onClick={() => setEditing(null)}>
                 Отмена
@@ -232,6 +283,7 @@ export function LedgerPage() {
           </form>
         ) : null}
       </Modal>
+      <FuelImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }

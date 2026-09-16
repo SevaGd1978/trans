@@ -81,6 +81,10 @@ export interface Transaction {
   routeId?: string;
   counterparty: string;
   comment: string;
+  liters?: number;
+  odometer?: number;
+  pricePerLiter?: number;
+  importKey?: string;
 }
 
 export interface Scenario {

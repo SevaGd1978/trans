@@ -24,6 +24,7 @@ interface Actions {
   upsertRoute: (route: RoutePlan) => void;
   removeRoute: (id: string) => void;
   upsertTransaction: (tx: Transaction) => void;
+  importTransactions: (txs: Transaction[]) => { added: number; skipped: number };
   removeTransaction: (id: string) => void;
   setBudgetCell: (categoryId: string, month: number, amount: number) => void;
   fillFuelFromFleet: () => void;
@@ -91,6 +92,24 @@ export const useApp = create<AppState & Actions>()(
               : [...s.transactions, tx].sort((a, b) => b.date.localeCompare(a.date)),
           };
         }),
+      importTransactions: (txs) => {
+        const s = get();
+        const keys = new Set(
+          s.transactions.map((t) => t.importKey).filter((k): k is string => Boolean(k)),
+        );
+        const added: Transaction[] = [];
+        for (const tx of txs) {
+          if (tx.importKey && keys.has(tx.importKey)) continue;
+          added.push(tx);
+          if (tx.importKey) keys.add(tx.importKey);
+        }
+        if (added.length) {
+          set({
+            transactions: [...s.transactions, ...added].sort((a, b) => b.date.localeCompare(a.date)),
+          });
+        }
+        return { added: added.length, skipped: txs.length - added.length };
+      },
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
       setBudgetCell: (categoryId, month, amount) =>

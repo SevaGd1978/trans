@@ -18,7 +18,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 pt-16">
       <button className="absolute inset-0 cursor-default" aria-label="Закрыть" onClick={onClose} />
       <div
-        className={`relative w-full rounded-2xl border border-line bg-paper shadow-2xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`relative w-full rounded-2xl border border-line bg-paper shadow-2xl ${wide ? "max-w-6xl" : "max-w-lg"}`}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-lg font-bold">{title}</h2>
