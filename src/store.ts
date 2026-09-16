@@ -152,7 +152,7 @@ export const useApp = create<AppState & Actions>()(
       },
     }),
     {
-      name: "magistral-budget-v2",
+      name: "magistral-budget-v3",
     },
   ),
 );

@@ -397,3 +397,32 @@ export function downloadFuelTemplate() {
   const wb = buildFuelTemplateWorkbook();
   XLSX.writeFile(wb, "zapravki-severtrans.xlsx");
 }
+
+function isoToDmy(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}.${m}.${y}`;
+}
+
+export function downloadFuelExport(fillings: Transaction[], vehicles: Vehicle[]) {
+  const plateOf = (id?: string) => vehicles.find((v) => v.id === id)?.plate ?? "";
+  const sorted = [...fillings].sort((a, b) => a.date.localeCompare(b.date));
+  const rows = [
+    [...TEMPLATE_HEADERS],
+    ...sorted.map((tx) => [
+      isoToDmy(tx.date),
+      plateOf(tx.vehicleId),
+      tx.odometer ?? "",
+      tx.liters ?? "",
+      tx.pricePerLiter ?? "",
+      tx.amount,
+      tx.counterparty,
+      tx.comment,
+    ]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 18 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Заправки");
+  XLSX.writeFile(wb, "zapravki-export.xlsx");
+}

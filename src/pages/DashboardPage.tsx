@@ -10,10 +10,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, Wrench } from "lucide-react";
+import { AlertTriangle, Fuel, Wrench } from "lucide-react";
+import { Link } from "react-router-dom";
 import { StatCard } from "../components/Layout";
 import { elapsedMonth, monthlySeries, totals, yearTransactions, budgetMap, byCategory, executionPercent } from "../lib/calc";
 import { money, moneyCompact, VEHICLE_STATUS_LABEL } from "../lib/format";
+import { fuelTransactions, vehicleFuelSummaries } from "../lib/fuelStats";
 import { useApp } from "../store";
 import { MONTHS } from "../types";
 
@@ -66,6 +68,12 @@ export function DashboardPage() {
   const idle = vehicles.filter((v) => v.status === "idle");
   if (idle.length) {
     alerts.push(`Простой: ${idle.map((v) => v.plate).join(", ")} — не приносит выручку.`);
+  }
+  const fuelOver = vehicleFuelSummaries(fuelTransactions(yearTx), vehicles).filter((s) => s.overNorm);
+  if (fuelOver.length) {
+    alerts.push(
+      `Расход выше нормы: ${fuelOver.map((s) => s.vehicle.plate).join(", ")}. Смотрите заправки.`,
+    );
   }
 
   const monthNow = elapsedMonth(year);
@@ -185,9 +193,15 @@ export function DashboardPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-line bg-white p-5">
-          <h3 className="mb-3 flex items-center gap-2 font-bold">
-            <AlertTriangle size={18} className="text-accent" />
-            Контроль
+          <h3 className="mb-3 flex items-center justify-between gap-2 font-bold">
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-accent" />
+              Контроль
+            </span>
+            <Link to="/fuel" className="flex items-center gap-1 text-sm font-semibold text-accent">
+              <Fuel size={16} />
+              Заправки
+            </Link>
           </h3>
           {alerts.length === 0 ? (
             <p className="text-sm text-muted">Отклонений нет: парк в линии, лимиты в норме.</p>

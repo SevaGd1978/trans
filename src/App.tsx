@@ -3,6 +3,7 @@ import { Layout } from "./components/Layout";
 import { BudgetPage } from "./pages/BudgetPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { FleetPage } from "./pages/FleetPage";
+import { FuelPage } from "./pages/FuelPage";
 import { LedgerPage } from "./pages/LedgerPage";
 import { RoutesPage } from "./pages/RoutesPage";
 import { ScenariosPage } from "./pages/ScenariosPage";
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/budget" element={<BudgetPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/fuel" element={<FuelPage />} />
         <Route path="/fleet" element={<FleetPage />} />
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/variance" element={<VariancePage />} />

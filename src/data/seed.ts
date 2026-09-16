@@ -1,4 +1,6 @@
-import { fuelCost, spreadEven } from "../lib/calc";
+import { fuelCost, roundMoney, spreadEven } from "../lib/calc";
+import { fillingKey } from "../lib/fuelImport";
+import { numberRu } from "../lib/format";
 import type {
   AppState,
   BudgetLine,
@@ -272,6 +274,9 @@ function makeTransactions(rand: Rand): Transaction[] {
   const tx: Transaction[] = [];
   let n = 0;
   const nextId = () => `tx-${++n}`;
+  const odometer = new Map(
+    VEHICLES.map((v) => [v.id, Math.round(22000 + (YEAR - v.year) * v.plannedKm * 0.42)]),
+  );
 
   for (let month = 0; month < 9; month++) {
     const days = [31, 28, 31, 30, 31, 30, 31, 31, 30][month];
@@ -320,18 +325,38 @@ function makeTransactions(rand: Rand): Transaction[] {
 
     for (const v of VEHICLES) {
       if (v.status === "repair" && month >= 6) continue;
-      const km = Math.round((v.plannedKm / 12) * (v.status === "idle" ? 0.25 : season));
-      const cost = jitter(rand, fuelCost(km, v.consumption, FUEL), 0.06);
-      tx.push({
-        id: nextId(),
-        type: "expense",
-        date: `${YEAR}-${pad(month + 1)}-${pad(6 + Math.floor(rand() * 8))}`,
-        amount: cost,
-        categoryId: "exp-fuel",
-        vehicleId: v.id,
-        counterparty: rand() > 0.5 ? "ГПН-АЗС" : "Лукойл",
-        comment: `Заправка, ~${km.toLocaleString("ru-RU")} км`,
-      });
+      const stops = v.status === "idle" ? 1 : 2;
+      for (let f = 0; f < stops; f++) {
+        const km = Math.round((v.plannedKm / 12 / stops) * (v.status === "idle" ? 0.25 : season) * (0.94 + rand() * 0.12));
+        const nextOdo = (odometer.get(v.id) ?? 0) + km;
+        odometer.set(v.id, nextOdo);
+        const actualCons = v.consumption * (0.92 + rand() * 0.18);
+        const liters = roundMoney((km / 100) * actualCons);
+        const price = roundMoney(FUEL * (0.985 + rand() * 0.03));
+        const amount = roundMoney(liters * price);
+        const station = rand() > 0.55 ? "ГПН-АЗС" : rand() > 0.5 ? "Лукойл" : "Роснефть";
+        const day = Math.min(days, 4 + f * 12 + Math.floor(rand() * 6));
+        tx.push({
+          id: nextId(),
+          type: "expense",
+          date: `${YEAR}-${pad(month + 1)}-${pad(day)}`,
+          amount,
+          categoryId: "exp-fuel",
+          vehicleId: v.id,
+          counterparty: station,
+          comment: `${numberRu(liters, 1)} л · пробег ${numberRu(nextOdo)} км`,
+          liters,
+          odometer: nextOdo,
+          pricePerLiter: price,
+          importKey: fillingKey({
+            date: `${YEAR}-${pad(month + 1)}-${pad(day)}`,
+            plate: v.plate,
+            liters,
+            amount,
+            odometer: nextOdo,
+          }),
+        });
+      }
     }
 
     tx.push({
