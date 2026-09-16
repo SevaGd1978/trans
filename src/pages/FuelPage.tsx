@@ -141,9 +141,9 @@ export function FuelPage() {
         </div>
       </section>
 
-      <div className="overflow-auto rounded-3xl border border-line bg-white">
+      <div className="max-h-[32rem] overflow-auto rounded-3xl border border-line bg-white">
         <table className="min-w-[980px] w-full text-sm">
-          <thead className="bg-paper-2 text-left text-xs uppercase tracking-wider text-muted">
+          <thead className="sticky top-0 z-10 bg-paper-2 text-left text-xs uppercase tracking-wider text-muted">
             <tr>
               <th className="px-4 py-3">Дата</th>
               <th className="px-4 py-3">ТС</th>
