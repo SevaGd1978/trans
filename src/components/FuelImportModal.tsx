@@ -6,6 +6,7 @@ import {
   downloadFuelTemplate,
   draftsToTransactions,
   fillingKey,
+  parseFuelTemplateExample,
   parseFuelWorkbook,
   type FuelFillingDraft,
 } from "../lib/fuelImport";
@@ -109,6 +110,18 @@ export function FuelImportModal({
         <div className="flex flex-wrap gap-2">
           <GhostButton type="button" onClick={downloadFuelTemplate}>
             Скачать шаблон
+          </GhostButton>
+          <GhostButton
+            type="button"
+            onClick={() => {
+              const parsed = parseFuelTemplateExample(vehicles, fuelPrice, existingKeys);
+              setFileName("пример-заправки.xlsx");
+              setError("");
+              setResult(null);
+              setDrafts(parsed.drafts);
+            }}
+          >
+            Пример отчёта
           </GhostButton>
           <GhostButton type="button" onClick={() => fileRef.current?.click()}>
             Выбрать файл

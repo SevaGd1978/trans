@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { MONTHS_FULL } from "../types";
-import { money } from "../lib/format";
 import { useApp } from "../store";
 import type { ReactNode } from "react";
 
@@ -167,9 +166,4 @@ export function StatCard({
       {hint ? <div className="mt-1 text-sm text-muted">{hint}</div> : null}
     </div>
   );
-}
-
-export function moneyHint(plan: number, actual: number) {
-  const delta = actual - plan;
-  return `${delta >= 0 ? "выше плана" : "ниже плана"} на ${money(Math.abs(delta))}`;
 }

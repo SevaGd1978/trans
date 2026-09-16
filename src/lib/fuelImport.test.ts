@@ -9,6 +9,7 @@ import {
   findHeaderRow,
   normalizePlate,
   parseDate,
+  parseFuelTemplateExample,
   parseFuelWorkbook,
   parseNumber,
 } from "./fuelImport";
@@ -22,6 +23,30 @@ const vehicles: Vehicle[] = [
     year: 2021,
     consumption: 32,
     plannedKm: 120000,
+    status: "active",
+    leaseMonthly: 0,
+    insuranceAnnual: 0,
+  },
+  {
+    id: "v-man",
+    name: "MAN TGX",
+    plate: "В 456 ОР 777",
+    type: "tractor",
+    year: 2020,
+    consumption: 33,
+    plannedKm: 110000,
+    status: "active",
+    leaseMonthly: 0,
+    insuranceAnnual: 0,
+  },
+  {
+    id: "v-actros",
+    name: "Actros",
+    plate: "К 567 ММ 50",
+    type: "truck",
+    year: 2022,
+    consumption: 28,
+    plannedKm: 80000,
     status: "active",
     leaseMonthly: 0,
     insuranceAnnual: 0,
@@ -131,3 +156,19 @@ describe("parseFuelWorkbook", () => {
     expect(txs[0].odometer).toBe(120000);
   });
 });
+
+describe("parseFuelTemplateExample", () => {
+  it("матчит латиницу B→В и считает сумму без колонки", () => {
+    const { drafts } = parseFuelTemplateExample(vehicles, 75.4, new Set());
+    expect(drafts).toHaveLength(5);
+    expect(drafts.every((d) => d.errors.length === 0)).toBe(true);
+    expect(drafts.every((d) => d.vehicleId)).toBe(true);
+    const latin = drafts.find((d) => d.note.includes("цене компании"));
+    expect(latin?.vehicleId).toBe("v-man");
+    expect(latin?.amount).toBe(roundMoneyLike(402 * 75.4));
+  });
+});
+
+function roundMoneyLike(n: number) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}

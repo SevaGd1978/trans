@@ -373,7 +373,7 @@ export function buildFuelTemplateWorkbook(): XLSX.WorkBook {
     ["12.09.2026", "А123ВС777", 118400, 390, 75.4, 29406, "ГПН-АЗС", "карта 1044"],
     ["14.09.2026", "А 123 ВС 777", 119620, 385, 75.4, 29029, "Лукойл", ""],
     ["13.09.2026", "В456ОР777", 97210, 410, 76.1, 31201, "Роснефть", ""],
-    ["15.09.2026", "A456OP777", 98540, 402, "", "", "ГПН-АЗС", "сумма по цене компании"],
+    ["15.09.2026", "B456OP777", 98540, 402, "", "", "ГПН-АЗС", "сумма по цене компании"],
     ["15.09.2026", "К567ММ50", 64110, 220, 75.4, 16588, "ГПН-АЗС", ""],
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -381,6 +381,16 @@ export function buildFuelTemplateWorkbook(): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Заправки");
   return wb;
+}
+
+export function parseFuelTemplateExample(
+  vehicles: Vehicle[],
+  fallbackPrice: number,
+  existingKeys: Set<string>,
+) {
+  const wb = buildFuelTemplateWorkbook();
+  const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer | Uint8Array;
+  return parseFuelWorkbook(buf, vehicles, fallbackPrice, existingKeys);
 }
 
 export function downloadFuelTemplate() {
