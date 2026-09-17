@@ -1,6 +1,6 @@
-import { fuelCost, roundMoney, spreadEven } from "../lib/calc";
+import { emptyMonths, fuelCost, roundMoney, spreadEven } from "../lib/calc";
 import { fillingKey } from "../lib/fuelImport";
-import { numberRu } from "../lib/format";
+import { numberRu, uid } from "../lib/format";
 import type {
   AppState,
   BudgetLine,
@@ -479,7 +479,9 @@ function makeTransactions(rand: Rand): Transaction[] {
   return tx.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function createSeed(): AppState {
+export const DEFAULT_ACCESS_PASSWORD = "magistral";
+
+export function createSeed(accessPassword = DEFAULT_ACCESS_PASSWORD): AppState {
   const rand = mulberry32(20260916);
   return {
     companyName: "ООО «СеверТранс»",
@@ -493,5 +495,28 @@ export function createSeed(): AppState {
     budget: makeBudget(),
     transactions: makeTransactions(rand),
     scenario: { fuelPct: 0, volumePct: 0, salaryPct: 0, repairPct: 0 },
+    accessPassword,
+  };
+}
+
+export function createEmpty(year: number, accessPassword: string): AppState {
+  return {
+    companyName: "",
+    inn: "",
+    fuelPrice: 0,
+    year,
+    budgetStatus: "draft",
+    vehicles: [],
+    routes: [],
+    categories: CATEGORIES,
+    budget: CATEGORIES.map((c) => ({
+      id: uid("b"),
+      categoryId: c.id,
+      year,
+      months: emptyMonths(),
+    })),
+    transactions: [],
+    scenario: { fuelPct: 0, volumePct: 0, salaryPct: 0, repairPct: 0 },
+    accessPassword,
   };
 }

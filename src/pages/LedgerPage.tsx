@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { FuelImportModal } from "../components/FuelImportModal";
+import { TripImportModal } from "../components/TripImportModal";
 import { Field, GhostButton, Modal, PrimaryButton, inputClass } from "../components/ui";
 import { yearTransactions } from "../lib/calc";
 import { money, numberRu, uid } from "../lib/format";
@@ -35,6 +36,7 @@ export function LedgerPage() {
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [tripImportOpen, setTripImportOpen] = useState(false);
 
   const rows = useMemo(() => {
     return yearTransactions(transactions, year)
@@ -90,6 +92,9 @@ export function LedgerPage() {
         </label>
         <GhostButton type="button" onClick={() => setImportOpen(true)}>
           Импорт заправок Excel
+        </GhostButton>
+        <GhostButton type="button" onClick={() => setTripImportOpen(true)}>
+          Импорт перевозок Excel
         </GhostButton>
         <PrimaryButton onClick={() => setEditing(emptyTx(year))}>Новая операция</PrimaryButton>
       </div>
@@ -284,6 +289,7 @@ export function LedgerPage() {
         ) : null}
       </Modal>
       <FuelImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <TripImportModal open={tripImportOpen} onClose={() => setTripImportOpen(false)} />
     </div>
   );
 }

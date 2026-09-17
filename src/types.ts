@@ -106,4 +106,5 @@ export interface AppState {
   budget: BudgetLine[];
   transactions: Transaction[];
   scenario: Scenario;
+  accessPassword: string;
 }

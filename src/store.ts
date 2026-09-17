@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createSeed } from "./data/seed";
+import { createEmpty, createSeed, DEFAULT_ACCESS_PASSWORD } from "./data/seed";
 import { emptyMonths, fuelCost, spreadEven } from "./lib/calc";
 import { uid } from "./lib/format";
+import { placeKey } from "./lib/tripImport";
 import type {
   AppState,
   BudgetLine,
@@ -25,11 +26,17 @@ interface Actions {
   removeRoute: (id: string) => void;
   upsertTransaction: (tx: Transaction) => void;
   importTransactions: (txs: Transaction[]) => { added: number; skipped: number };
+  importTrips: (payload: {
+    routes: RoutePlan[];
+    transactions: Transaction[];
+  }) => { routesAdded: number; routesUpdated: number; tripsAdded: number; skipped: number };
   removeTransaction: (id: string) => void;
   setBudgetCell: (categoryId: string, month: number, amount: number) => void;
   fillFuelFromFleet: () => void;
   copyBudgetEven: (categoryId: string, annual: number) => void;
+  changeAccessPassword: (next: string) => void;
   resetDemo: () => void;
+  clearAll: () => void;
 }
 
 function ensureBudgetYear(budget: BudgetLine[], year: number, categoryIds: string[]): BudgetLine[] {
@@ -110,6 +117,46 @@ export const useApp = create<AppState & Actions>()(
         }
         return { added: added.length, skipped: txs.length - added.length };
       },
+      importTrips: ({ routes: nextRoutes, transactions: txs }) => {
+        const s = get();
+        const before = new Map(s.routes.map((r) => [placeKey(r.from, r.to), r]));
+        let routesAdded = 0;
+        let routesUpdated = 0;
+        for (const route of nextRoutes) {
+          const key = placeKey(route.from, route.to);
+          const prev = before.get(key);
+          if (!prev) routesAdded += 1;
+          else if (
+            prev.distanceKm !== route.distanceKm ||
+            prev.avgRevenue !== route.avgRevenue ||
+            prev.tripsPerMonth !== route.tripsPerMonth ||
+            prev.vehicleId !== route.vehicleId
+          ) {
+            routesUpdated += 1;
+          }
+        }
+        const keys = new Set(
+          s.transactions.map((t) => t.importKey).filter((k): k is string => Boolean(k)),
+        );
+        const added: Transaction[] = [];
+        for (const tx of txs) {
+          if (tx.importKey && keys.has(tx.importKey)) continue;
+          added.push(tx);
+          if (tx.importKey) keys.add(tx.importKey);
+        }
+        set({
+          routes: nextRoutes,
+          transactions: added.length
+            ? [...s.transactions, ...added].sort((a, b) => b.date.localeCompare(a.date))
+            : s.transactions,
+        });
+        return {
+          routesAdded,
+          routesUpdated,
+          tripsAdded: added.length,
+          skipped: txs.length - added.length,
+        };
+      },
       removeTransaction: (id) =>
         set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) })),
       setBudgetCell: (categoryId, month, amount) =>
@@ -146,13 +193,26 @@ export const useApp = create<AppState & Actions>()(
               : line,
           ),
         })),
+      changeAccessPassword: (next) => set({ accessPassword: next.trim() }),
       resetDemo: () => {
-        const seed = createSeed();
-        set(seed);
+        const accessPassword = get().accessPassword || DEFAULT_ACCESS_PASSWORD;
+        set(createSeed(accessPassword));
+      },
+      clearAll: () => {
+        const accessPassword = get().accessPassword || DEFAULT_ACCESS_PASSWORD;
+        set(createEmpty(get().year, accessPassword));
       },
     }),
     {
       name: "magistral-budget-v3",
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<AppState>;
+        return {
+          ...current,
+          ...saved,
+          accessPassword: saved.accessPassword || DEFAULT_ACCESS_PASSWORD,
+        };
+      },
     },
   ),
 );

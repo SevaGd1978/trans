@@ -87,17 +87,17 @@ export function DashboardPage() {
     <div className="space-y-6">
       <section className="waybill-grid relative overflow-hidden rounded-3xl border border-line bg-white p-5 md:p-7">
         <div className="absolute right-8 top-8 hidden md:block">
-          <div className="stamp">СеверТранс</div>
+          <div className="stamp">{companyName ? "бюджет" : "пусто"}</div>
         </div>
         <div className="text-[11px] font-bold uppercase tracking-[0.25em] text-accent">
           Путевой лист бюджета
         </div>
         <h2 className="mt-1 max-w-2xl text-3xl font-extrabold tracking-tight">
-          {companyName}
+          {companyName || "Новая компания"}
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-muted">
-          ИНН {inn} · дизель {fuelPrice.toLocaleString("ru-RU")} ₽/л · {vehicles.length} единиц
-          техники · {routes.length} маршрутов. План и факт за {year} год, факт заполнен по сентябрь.
+          {inn ? `ИНН ${inn}` : "ИНН не указан"} · дизель {fuelPrice.toLocaleString("ru-RU")} ₽/л ·{" "}
+          {vehicles.length} единиц техники · {routes.length} маршрутов. План и факт за {year} год.
         </p>
         <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full bg-paper-2 px-3 py-1">Магистральные тягачи</span>
@@ -221,25 +221,31 @@ export function DashboardPage() {
             Состояние парка
           </h3>
           <div className="space-y-2">
-            {vehicles.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 text-sm">
-                <div>
-                  <div className="font-semibold">{v.name}</div>
-                  <div className="text-xs text-muted">{v.plate}</div>
+            {vehicles.length === 0 ? (
+              <p className="text-sm text-muted">
+                Автопарк пуст. Добавьте технику или учебные записи в настройках.
+              </p>
+            ) : (
+              vehicles.map((v) => (
+                <div key={v.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div>
+                    <div className="font-semibold">{v.name}</div>
+                    <div className="text-xs text-muted">{v.plate}</div>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                      v.status === "active"
+                        ? "bg-teal-2 text-teal"
+                        : v.status === "repair"
+                          ? "bg-danger-2 text-danger"
+                          : "bg-paper-2 text-muted"
+                    }`}
+                  >
+                    {VEHICLE_STATUS_LABEL[v.status]}
+                  </span>
                 </div>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                    v.status === "active"
-                      ? "bg-teal-2 text-teal"
-                      : v.status === "repair"
-                        ? "bg-danger-2 text-danger"
-                        : "bg-paper-2 text-muted"
-                  }`}
-                >
-                  {VEHICLE_STATUS_LABEL[v.status]}
-                </span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </section>

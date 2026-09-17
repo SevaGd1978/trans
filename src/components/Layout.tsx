@@ -89,7 +89,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="text-[11px] uppercase tracking-widest text-paper/45">
               Компания
             </div>
-            <div className="mt-1 font-semibold">{companyName}</div>
+            <div className="mt-1 font-semibold">{companyName || "Новая компания"}</div>
             <div className="mt-3 flex items-center gap-2 text-sm text-paper/70">
               <Fuel size={16} className="text-accent-2" />
               Дизель {fuelPrice.toLocaleString("ru-RU")} ₽/л

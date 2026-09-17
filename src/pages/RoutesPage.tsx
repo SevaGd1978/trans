@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TripImportModal } from "../components/TripImportModal";
 import { Field, GhostButton, Modal, PrimaryButton, inputClass } from "../components/ui";
 import { fuelCost } from "../lib/calc";
 import { money, numberRu, uid } from "../lib/format";
@@ -23,17 +24,24 @@ export function RoutesPage() {
   const upsertRoute = useApp((s) => s.upsertRoute);
   const removeRoute = useApp((s) => s.removeRoute);
   const [editing, setEditing] = useState<RoutePlan | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-muted">
           По каждому направлению считается топливо на рейс и маржа до постоянных затрат. Если
-          маржинальность падает ниже 40%, направление стоит пересмотреть.
+          маржинальность падает ниже 40%, направление стоит пересмотреть. Excel с таблицей перевозок
+          создаёт маршруты и записывает стоимость рейсов в журнал.
         </p>
-        <PrimaryButton onClick={() => setEditing(blankRoute(vehicles[0]?.id ?? ""))}>
-          Добавить маршрут
-        </PrimaryButton>
+        <div className="flex flex-wrap gap-2">
+          <GhostButton type="button" onClick={() => setImportOpen(true)}>
+            Импорт Excel
+          </GhostButton>
+          <PrimaryButton onClick={() => setEditing(blankRoute(vehicles[0]?.id ?? ""))}>
+            Добавить маршрут
+          </PrimaryButton>
+        </div>
       </div>
 
       <div className="overflow-auto rounded-3xl border border-line bg-white">
@@ -51,6 +59,13 @@ export function RoutesPage() {
             </tr>
           </thead>
           <tbody>
+            {routes.length === 0 ? (
+              <tr>
+                <td className="px-4 py-8 text-sm text-muted" colSpan={8}>
+                  Маршрутов нет. Добавьте вручную или загрузите таблицу перевозок из Excel.
+                </td>
+              </tr>
+            ) : null}
             {routes.map((route) => {
               const vehicle = vehicles.find((v) => v.id === route.vehicleId);
               const fuel = vehicle ? fuelCost(route.distanceKm, vehicle.consumption, fuelPrice) : 0;
@@ -158,6 +173,7 @@ export function RoutesPage() {
           </form>
         ) : null}
       </Modal>
+      <TripImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }
