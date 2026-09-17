@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-ink: #1c1915;
+  --color-ink-soft: #3d3830;
+  --color-paper: #f4efe6;
+  --color-paper-2: #ebe3d4;
+  --color-paper-3: #e2d7c4;
+  --color-sidebar: #161310;
+  --color-sidebar-2: #211c18;
+  --color-accent: #c45c26;
+  --color-accent-2: #e39a63;
+  --color-teal: #1f6f5b;
+  --color-teal-2: #d7efe6;
+  --color-danger: #b42318;
+  --color-danger-2: #f8d5d1;
+  --color-warn: #b45309;
+  --color-muted: #7a7368;
+  --color-line: #d9cdba;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbbfaa;
+  border-radius: 99px;
+}
+
+.waybill-grid {
+  background-image:
+    linear-gradient(to right, rgb(196 92 38 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(196 92 38 / 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.stamp {
+  border: 2px solid rgb(196 92 38 / 0.55);
+  color: rgb(196 92 38 / 0.9);
+  transform: rotate(-8deg);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,0 +1,10 @@
+meta:
+  environment: node
+  toolchain:
+    name: browser
+    version: "22"
+
+build:
+  additionalCommands: npm install --include=dev && npm run build
+  artifacts:
+    "dist/*": /
