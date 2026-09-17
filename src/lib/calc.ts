@@ -163,6 +163,8 @@ export function applyScenario(
       factor = 1 + scenario.salaryPct / 100;
     } else if (id === categoryIds.repair) {
       factor = (1 + scenario.repairPct / 100) * volumeFactor;
+    } else if (id === "exp-carrier" || id === "exp-dispatch") {
+      factor = volumeFactor;
     } else if (id.startsWith("exp-")) {
       factor = volumeFactor > 1 ? 1 + (volumeFactor - 1) * 0.25 : volumeFactor;
     }

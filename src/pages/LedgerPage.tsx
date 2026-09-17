@@ -94,7 +94,7 @@ export function LedgerPage() {
           Импорт заправок Excel
         </GhostButton>
         <GhostButton type="button" onClick={() => setTripImportOpen(true)}>
-          Импорт перевозок Excel
+          Импорт заказов 1С
         </GhostButton>
         <PrimaryButton onClick={() => setEditing(emptyTx(year))}>Новая операция</PrimaryButton>
       </div>

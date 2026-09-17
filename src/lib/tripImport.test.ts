@@ -1,17 +1,23 @@
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import type { RoutePlan, Vehicle } from "../types";
+import { parseNumber } from "./fuelImport";
 import {
   buildTripDrafts,
+  collectTripImportKeys,
+  decodeTableText,
   detectTripColumns,
   draftsToTripImport,
+  orderKey,
   parseTripTemplateExample,
   parseTripWorkbook,
   placeKey,
   splitRouteName,
   tripKey,
 } from "./tripImport";
-import { parseNumber } from "./fuelImport";
 
 const vehicles: Vehicle[] = [
   {
@@ -53,6 +59,25 @@ const routes: RoutePlan[] = [
   },
 ];
 
+function encodeWin1251(text: string): Uint8Array {
+  const out: number[] = [];
+  for (const ch of text) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c < 128) out.push(c);
+    else if (c >= 0x410 && c <= 0x44f) out.push(c - 0x410 + 0xc0);
+    else if (c === 0x401) out.push(0xa8);
+    else if (c === 0x451) out.push(0xb8);
+    else if (c === 0x2116) out.push(0xb9);
+    else if (c === 0x2014 || c === 0x2013) out.push(0x97);
+    else if (c === 0xa0) out.push(0xa0);
+    else out.push(0x3f);
+  }
+  return Uint8Array.from(out);
+}
+
+const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "fixtures/orders-1c.csv");
+const realReportPath = "/home/ubuntu/.cursor/projects/workspace/uploads/1111_523d.csv";
+
 describe("splitRouteName / placeKey", () => {
   it("делит направление по тире", () => {
     expect(splitRouteName("Москва — Санкт-Петербург")).toEqual({
@@ -84,6 +109,38 @@ describe("detectTripColumns", () => {
     expect(cols.distance).toBe(5);
     expect(cols.amount).toBe(6);
     expect(cols.customer).toBe(7);
+  });
+
+  it("находит колонки сводного отчёта 1С", () => {
+    const cols = detectTripColumns([
+      "№",
+      "Период заказа",
+      "Клиент",
+      "Загрузка",
+      "Разгрузка",
+      "Груз",
+      "Мест",
+      "Объем",
+      "Вес",
+      "Исполнитель",
+      "Водитель",
+      "Сумма",
+      "Исполнителю",
+      "Диспетчеру",
+      "Прибыль",
+    ]);
+    expect(cols.orderNo).toBe(0);
+    expect(cols.period).toBe(1);
+    expect(cols.customer).toBe(2);
+    expect(cols.from).toBe(3);
+    expect(cols.to).toBe(4);
+    expect(cols.cargo).toBe(5);
+    expect(cols.carrier).toBe(9);
+    expect(cols.driver).toBe(10);
+    expect(cols.amount).toBe(11);
+    expect(cols.carrierAmount).toBe(12);
+    expect(cols.dispatchAmount).toBe(13);
+    expect(cols.profit).toBe(14);
   });
 });
 
@@ -178,18 +235,72 @@ describe("draftsToTripImport", () => {
     expect(payload.transactions[0].amount).toBe(125000);
     expect(payload.transactions[0].comment).toContain("Москва — Казань");
   });
+
+  it("раскладывает заказ 1С на выручку, исполнителю и диспетчеру", () => {
+    const drafts = buildTripDrafts(
+      [
+        [
+          "24031",
+          "31.08.2026  00:00 — 00:00",
+          'ООО "ПЗПТ"',
+          "317/08 Первоуральск УМПЦ Ревда",
+          "Полевской",
+          "Труба ППУ",
+          "",
+          "",
+          "20",
+          'ООО "Терминал"',
+          "Погудин Андрей",
+          "33 000,00",
+          "0,00",
+          "33 000,00",
+          "0,00",
+        ],
+      ],
+      {
+        orderNo: 0,
+        period: 1,
+        customer: 2,
+        from: 3,
+        to: 4,
+        cargo: 5,
+        carrier: 9,
+        driver: 10,
+        amount: 11,
+        carrierAmount: 12,
+        dispatchAmount: 13,
+        profit: 14,
+      },
+      [],
+      [],
+      new Set(),
+    );
+    expect(drafts[0].errors).toEqual([]);
+    expect(drafts[0].from).toBe("Первоуральск");
+    expect(drafts[0].to).toBe("Полевской");
+    expect(drafts[0].date).toBe("2026-08-31");
+    expect(drafts[0].carrierAmount).toBeUndefined();
+    expect(drafts[0].dispatchAmount).toBe(33000);
+    const payload = draftsToTripImport(drafts, []);
+    expect(payload.transactions).toHaveLength(2);
+    expect(payload.transactions.map((t) => t.categoryId).sort()).toEqual(["exp-dispatch", "inc-freight"]);
+    expect(payload.transactions.every((t) => t.importKey?.startsWith("order|24031"))).toBe(true);
+  });
 });
 
 describe("parseTripWorkbook", () => {
-  it("читает шаблонный Excel", () => {
+  it("читает шаблон сводного отчёта", () => {
     const parsed = parseTripTemplateExample(vehicles, routes, new Set());
-    expect(parsed.columns.date).toBeDefined();
+    expect(parsed.columns.orderNo).toBeDefined();
+    expect(parsed.columns.period).toBeDefined();
     expect(parsed.columns.amount).toBeDefined();
+    expect(parsed.columns.carrierAmount).toBeDefined();
     const ready = parsed.drafts.filter((d) => d.errors.length === 0);
-    expect(ready.length).toBeGreaterThanOrEqual(3);
+    expect(ready).toHaveLength(3);
     const payload = draftsToTripImport(parsed.drafts, routes);
-    expect(payload.transactions.length).toBeGreaterThanOrEqual(2);
-    expect(payload.routes.some((r) => r.from === "Подольск")).toBe(true);
+    expect(payload.transactions.length).toBeGreaterThanOrEqual(6);
+    expect(payload.routes.some((r) => r.from === "Домодедово" && r.to === "Екатеринбург")).toBe(true);
+    expect(payload.routes.some((r) => r.from === "Полевской" && r.to === "Омск")).toBe(true);
   });
 
   it("читает workbook из байтов", () => {
@@ -205,5 +316,52 @@ describe("parseTripWorkbook", () => {
     expect(parsed.drafts[0].from).toBe("Москва");
     expect(parsed.drafts[0].to).toBe("Тверь");
     expect(parsed.drafts[0].amount).toBe(45000);
+  });
+
+  it("читает UTF-8 CSV сводного отчёта и пропускает итоги", () => {
+    const buf = readFileSync(fixturePath);
+    const parsed = parseTripWorkbook(buf, [], [], new Set());
+    expect(parsed.drafts).toHaveLength(3);
+    expect(parsed.drafts.every((d) => d.errors.length === 0)).toBe(true);
+    const payload = draftsToTripImport(parsed.drafts, []);
+    const income = payload.transactions.filter((t) => t.categoryId === "inc-freight");
+    const carrier = payload.transactions.filter((t) => t.categoryId === "exp-carrier");
+    const dispatch = payload.transactions.filter((t) => t.categoryId === "exp-dispatch");
+    expect(income.reduce((a, t) => a + t.amount, 0)).toBe(323000);
+    expect(carrier.reduce((a, t) => a + t.amount, 0)).toBe(260000);
+    expect(dispatch.reduce((a, t) => a + t.amount, 0)).toBe(33000);
+    expect(payload.transactions.some((t) => t.amount === 323000)).toBe(false);
+    expect(collectTripImportKeys(payload.transactions).has(orderKey("23856"))).toBe(true);
+  });
+
+  it("читает тот же отчёт в Windows-1251", () => {
+    const utf8 = readFileSync(fixturePath, "utf8");
+    const bytes = encodeWin1251(utf8);
+    expect(decodeTableText(bytes)).toContain("Сводный отчет");
+    const parsed = parseTripWorkbook(bytes, [], [], new Set());
+    expect(parsed.drafts).toHaveLength(3);
+    expect(parsed.drafts[0].customer).toContain("ЛИДЕРТРАНС");
+    expect(parsed.drafts[0].from).toBe("Домодедово");
+  });
+});
+
+describe("реальный сводный отчёт 1С", () => {
+  it.skipIf(!existsSync(realReportPath))("принимает 123 заказа и сходится с подвалом", () => {
+    const buf = readFileSync(realReportPath);
+    const parsed = parseTripWorkbook(buf, [], [], new Set());
+    const ready = parsed.drafts.filter((d) => d.errors.length === 0);
+    expect(ready).toHaveLength(123);
+    expect(ready.some((d) => d.orderNo === "24008" && d.warnings.some((w) => w.includes("Нулевые")))).toBe(
+      true,
+    );
+    expect(parsed.drafts.some((d) => d.amount === 10_292_564)).toBe(false);
+    const payload = draftsToTripImport(parsed.drafts, []);
+    const sum = (cat: string) =>
+      payload.transactions.filter((t) => t.categoryId === cat).reduce((a, t) => a + t.amount, 0);
+    expect(sum("inc-freight")).toBeCloseTo(10_292_564, 0);
+    expect(sum("exp-carrier")).toBeCloseTo(8_586_696, 0);
+    expect(sum("exp-dispatch")).toBeCloseTo(728_000, 0);
+    expect(payload.routes.some((r) => r.from === "Полевской")).toBe(true);
+    expect(payload.routes.some((r) => r.to === "Екатеринбург")).toBe(true);
   });
 });

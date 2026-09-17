@@ -166,6 +166,8 @@ describe("applyScenario", () => {
         "exp-salary-drivers": 300000,
         "exp-repair": 100000,
         "exp-admin": 50000,
+        "exp-carrier": 400000,
+        "exp-dispatch": 50000,
       },
       { fuelPct: 10, volumePct: 20, salaryPct: 5, repairPct: 50 },
       {
@@ -178,6 +180,8 @@ describe("applyScenario", () => {
     expect(result.byCategory["exp-fuel"]).toBe(264000);
     expect(result.byCategory["exp-salary-drivers"]).toBe(315000);
     expect(result.byCategory["exp-repair"]).toBe(180000);
+    expect(result.byCategory["exp-carrier"]).toBe(480000);
+    expect(result.byCategory["exp-dispatch"]).toBe(60000);
   });
 });
 

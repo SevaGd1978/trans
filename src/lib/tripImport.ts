@@ -2,8 +2,16 @@ import * as XLSX from "xlsx";
 import type { RoutePlan, Transaction, Vehicle } from "../types";
 import { uid } from "./format";
 import { normalizePlate, parseDate, parseNumber } from "./fuelImport";
+import { extractPlace } from "./place";
+import {
+  ORDER_CARRIER_CATEGORY,
+  ORDER_DISPATCH_CATEGORY,
+  ORDER_INCOME_CATEGORY,
+} from "./orderStats";
 
 export type TripColumn =
+  | "orderNo"
+  | "period"
   | "date"
   | "route"
   | "from"
@@ -11,20 +19,30 @@ export type TripColumn =
   | "plate"
   | "distance"
   | "amount"
+  | "carrierAmount"
+  | "dispatchAmount"
+  | "profit"
   | "trips"
   | "customer"
-  | "cargo";
+  | "cargo"
+  | "carrier"
+  | "driver"
+  | "weight"
+  | "volume"
+  | "places";
 
 const COLUMN_ALIASES: Record<TripColumn, string[]> = {
+  orderNo: ["номер заказа", "номер заявки", "номер", "order number"],
+  period: ["период заказа", "период", "period"],
   date: ["дата", "date", "день рейса", "дата рейса"],
   route: ["маршрут", "направление", "route"],
-  from: ["откуда", "пункт погрузки", "погрузка", "город отправления", "from", "departure"],
-  to: ["куда", "пункт разгрузки", "разгрузка", "город назначения", "to", "destination"],
+  from: ["загрузка", "откуда", "пункт погрузки", "погрузка", "город отправления", "from", "departure"],
+  to: ["разгрузка", "куда", "пункт разгрузки", "город назначения", "to", "destination"],
   plate: ["госномер", "гос номер", "грз", "номер тс", "авто", "машина", "тс", "plate"],
   distance: ["км", "расстояние", "дистанция", "пробег рейса", "км рейса", "distance"],
   amount: [
-    "стоимость",
     "сумма",
+    "стоимость",
     "выручка",
     "тариф",
     "ставка",
@@ -35,18 +53,28 @@ const COLUMN_ALIASES: Record<TripColumn, string[]> = {
     "cost",
     "revenue",
   ],
+  carrierAmount: ["исполнителю", "перевозчику", "оплата исполнителю"],
+  dispatchAmount: ["диспетчеру", "комиссия диспетчера"],
+  profit: ["прибыль", "маржа", "profit"],
   trips: ["рейсов", "рейсы", "рейсов в месяц", "частота", "trips"],
-  customer: ["заказчик", "клиент", "контрагент", "грузоотправитель", "плательщик", "customer"],
+  customer: ["клиент", "заказчик", "контрагент", "грузоотправитель", "плательщик", "customer"],
   cargo: ["груз", "номенклатура", "комментарий", "примечание", "cargo", "comment"],
+  carrier: ["исполнитель", "перевозчик", "подрядчик"],
+  driver: ["водитель", "driver"],
+  weight: ["вес", "масса", "тн", "weight"],
+  volume: ["объем", "объём", "м3", "volume"],
+  places: ["мест", "место", "places"],
 };
 
 function normHeader(raw: string): string {
-  return raw
+  const mapped = raw
     .toLowerCase()
     .replace(/ё/g, "е")
+    .replace(/[№#]/g, " номер ")
     .replace(/[^a-zа-я0-9/]+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
+  return mapped;
 }
 
 export function detectTripColumns(headers: unknown[]): Partial<Record<TripColumn, number>> {
@@ -130,11 +158,33 @@ export function tripKey(input: {
   ].join("|");
 }
 
+export function orderKey(orderNo: string): string {
+  return `order|${orderNo.trim()}`;
+}
+
+export function orderTxKey(orderNo: string, categoryId: string): string {
+  return `${orderKey(orderNo)}|${categoryId}`;
+}
+
+function moneyPositive(value: number | undefined): number | undefined {
+  if (value == null || value === 0) return undefined;
+  return value;
+}
+
+function looksLikeTotalsLabel(value: string): boolean {
+  const n = value.toLowerCase().replace(/ё/g, "е").trim();
+  return /^(итого|всего|сумма|итого:|всего:)$/.test(n);
+}
+
 export interface TripDraft {
   row: number;
+  orderNo: string;
   date?: string;
+  periodRaw: string;
   from: string;
   to: string;
+  fromRaw: string;
+  toRaw: string;
   routeName: string;
   plateRaw: string;
   vehicleId?: string;
@@ -142,9 +192,14 @@ export interface TripDraft {
   routeId?: string;
   distanceKm?: number;
   amount?: number;
+  carrierAmount?: number;
+  dispatchAmount?: number;
+  profit?: number;
   tripsPerMonth?: number;
   customer: string;
   cargo: string;
+  carrier: string;
+  driver: string;
   errors: string[];
   warnings: string[];
   duplicate: boolean;
@@ -161,48 +216,82 @@ export function buildTripDrafts(
   const byPlate = new Map(vehicles.map((v) => [normalizePlate(v.plate), v]));
   const byRoute = new Map(routes.map((r) => [placeKey(r.from, r.to), r]));
   const drafts: TripDraft[] = [];
+  const seenInFile = new Set<string>();
 
   rows.forEach((row, i) => {
     const empty = !row.some((c) => String(c ?? "").trim() !== "");
     if (empty) return;
 
+    const orderNo = String(cell(row, columns.orderNo) ?? "").trim();
+    const periodRaw = String(cell(row, columns.period) ?? "").trim();
     const routeRaw = String(cell(row, columns.route) ?? "").trim();
     const split = routeRaw ? splitRouteName(routeRaw) : { from: "", to: "", name: "" };
-    const from = String(cell(row, columns.from) ?? "").trim() || split.from;
-    const to = String(cell(row, columns.to) ?? "").trim() || split.to;
-    const date = parseDate(cell(row, columns.date));
+    const fromRaw = String(cell(row, columns.from) ?? "").trim() || split.from;
+    const toRaw = String(cell(row, columns.to) ?? "").trim() || split.to;
+    const from = extractPlace(fromRaw) || fromRaw;
+    const to = extractPlace(toRaw) || toRaw;
+    const date = parseDate(cell(row, columns.period)) ?? parseDate(cell(row, columns.date));
     const plateRaw = String(cell(row, columns.plate) ?? "").trim();
     const distanceKm = parseNumber(cell(row, columns.distance));
-    const amount = parseNumber(cell(row, columns.amount));
+    const amount = moneyPositive(parseNumber(cell(row, columns.amount)));
+    const carrierAmount = moneyPositive(parseNumber(cell(row, columns.carrierAmount)));
+    const dispatchAmount = moneyPositive(parseNumber(cell(row, columns.dispatchAmount)));
+    const profit = parseNumber(cell(row, columns.profit));
     const tripsPerMonth = parseNumber(cell(row, columns.trips));
     const customer = String(cell(row, columns.customer) ?? "").trim();
     const cargo = String(cell(row, columns.cargo) ?? "").trim();
+    const carrier = String(cell(row, columns.carrier) ?? "").trim();
+    const driver = String(cell(row, columns.driver) ?? "").trim();
     const vehicle = plateRaw ? byPlate.get(normalizePlate(plateRaw)) : undefined;
     const route = from && to ? byRoute.get(placeKey(from, to)) : undefined;
+
+    const firstCell = String(row[0] ?? "").trim();
+    const isFooter =
+      looksLikeTotalsLabel(firstCell) ||
+      looksLikeTotalsLabel(orderNo) ||
+      (!orderNo && !date && !from && !to && !customer && !routeRaw);
+    if (isFooter) return;
 
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    if (!from && !to) errors.push("Нет маршрута (откуда / куда)");
-    else if (!from || !to) errors.push("Укажите и пункт погрузки, и разгрузки");
-    if (date && amount == null) errors.push("Нет стоимости рейса");
-    if (!date && amount == null && distanceKm == null && !from) errors.push("Пустая строка");
-    if (amount != null && amount < 0) errors.push("Стоимость не может быть отрицательной");
+    if (!from && !to) errors.push("Нет загрузки и разгрузки");
+    if (amount == null && carrierAmount == null && dispatchAmount == null) {
+      if (orderNo) warnings.push("Нулевые суммы по заказу");
+      else errors.push("Нет сумм по заказу");
+    }
+    if (amount != null && amount < 0) errors.push("Сумма не может быть отрицательной");
+    if (carrierAmount != null && carrierAmount < 0) errors.push("Оплата исполнителю не может быть отрицательной");
+    if (dispatchAmount != null && dispatchAmount < 0) errors.push("Оплата диспетчеру не может быть отрицательной");
     if (distanceKm != null && distanceKm < 0) errors.push("Расстояние не может быть отрицательным");
+    if (columns.period != null && !date && (amount != null || carrierAmount != null || dispatchAmount != null)) {
+      errors.push("Нет периода заказа");
+    }
 
     if (plateRaw && !vehicle) warnings.push("ТС не найдено в автопарке");
     if (from && to && !route) warnings.push("Маршрут будет добавлен в справочник");
-    if (!date && amount != null) warnings.push("Только в справочник маршрутов, без журнала");
-    if (date && !plateRaw) warnings.push("Нет госномера");
+    if (!date && (amount != null || carrierAmount != null || dispatchAmount != null) && columns.period == null) {
+      warnings.push("Только в справочник маршрутов, без журнала");
+    }
+    if (columns.plate != null && date && !plateRaw) warnings.push("Нет госномера");
 
-    const routeName = split.name || (from && to ? `${from} — ${to}` : routeRaw);
-    const importKey = tripKey({ date, from, to, plate: plateRaw, amount });
+    const routeName =
+      split.name || (from && to ? `${from} — ${to}` : from || to || routeRaw);
+    const importKey = orderNo
+      ? orderKey(orderNo)
+      : tripKey({ date, from, to, plate: plateRaw, amount });
+    const duplicate = existingKeys.has(importKey) || seenInFile.has(importKey);
+    if (!duplicate && orderNo) seenInFile.add(importKey);
 
     drafts.push({
       row: i + 1,
+      orderNo,
       date,
+      periodRaw,
       from,
       to,
+      fromRaw,
+      toRaw,
       routeName,
       plateRaw,
       vehicleId: vehicle?.id,
@@ -210,12 +299,17 @@ export function buildTripDrafts(
       routeId: route?.id,
       distanceKm,
       amount,
+      carrierAmount,
+      dispatchAmount,
+      profit: profit ?? undefined,
       tripsPerMonth: tripsPerMonth != null ? Math.round(tripsPerMonth) : undefined,
       customer,
       cargo,
+      carrier,
+      driver,
       errors,
       warnings,
-      duplicate: Boolean(date && existingKeys.has(importKey)),
+      duplicate,
       importKey,
     });
   });
@@ -227,15 +321,17 @@ export function draftsToTripImport(
   drafts: TripDraft[],
   existingRoutes: RoutePlan[],
 ): { routes: RoutePlan[]; transactions: Transaction[] } {
-  const ready = drafts.filter((d) => d.errors.length === 0);
+  const ready = drafts.filter((d) => d.errors.length === 0 && !d.duplicate);
   const byKey = new Map<string, RoutePlan>();
   for (const r of existingRoutes) {
     byKey.set(placeKey(r.from, r.to), { ...r });
   }
 
+  const counts = new Map<string, number>();
   for (const d of ready) {
     if (!d.from || !d.to) continue;
     const key = placeKey(d.from, d.to);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
     const prev = byKey.get(key);
     if (!prev) {
       const created: RoutePlan = {
@@ -245,16 +341,22 @@ export function draftsToTripImport(
         to: d.to,
         distanceKm: d.distanceKm ?? 0,
         avgRevenue: d.amount ?? 0,
-        tripsPerMonth: d.tripsPerMonth ?? 8,
+        tripsPerMonth: d.tripsPerMonth ?? 1,
         vehicleId: d.vehicleId ?? "",
       };
       byKey.set(key, created);
     } else {
+      const n = counts.get(key) ?? 1;
+      const prevCount = n - 1;
+      const avgRevenue =
+        d.amount != null
+          ? Math.round(((prev.avgRevenue * prevCount + d.amount) / n) * 100) / 100
+          : prev.avgRevenue;
       byKey.set(key, {
         ...prev,
         distanceKm: d.distanceKm ?? prev.distanceKm,
-        avgRevenue: d.amount ?? prev.avgRevenue,
-        tripsPerMonth: d.tripsPerMonth ?? prev.tripsPerMonth,
+        avgRevenue,
+        tripsPerMonth: d.tripsPerMonth ?? Math.max(prev.tripsPerMonth, n),
         vehicleId: prev.vehicleId || d.vehicleId || "",
         name: prev.name || d.routeName,
       });
@@ -262,28 +364,119 @@ export function draftsToTripImport(
   }
 
   const routes = [...byKey.values()];
-  const transactions: Transaction[] = ready
-    .filter((d) => d.date && d.amount != null && !d.duplicate)
-    .map((d) => {
-      const route = byKey.get(placeKey(d.from, d.to));
-      const commentParts = [`Рейс ${d.from} — ${d.to}`];
-      if (d.distanceKm != null) commentParts.push(`${d.distanceKm} км`);
-      if (d.cargo) commentParts.push(d.cargo);
-      return {
+  const transactions: Transaction[] = [];
+
+  for (const d of ready) {
+    if (!d.date) continue;
+    const route = d.from && d.to ? byKey.get(placeKey(d.from, d.to)) : undefined;
+    const orderLabel = d.orderNo ? `Заказ №${d.orderNo}` : `Рейс ${d.from} — ${d.to}`;
+    const routeLabel = d.from && d.to ? `${d.from} — ${d.to}` : d.routeName;
+    const extras = [d.cargo, d.driver].filter(Boolean);
+
+    if (d.amount != null) {
+      transactions.push({
         id: uid("tx"),
-        type: "income" as const,
-        date: d.date as string,
-        amount: d.amount as number,
-        categoryId: "inc-freight",
+        type: "income",
+        date: d.date,
+        amount: d.amount,
+        categoryId: ORDER_INCOME_CATEGORY,
         vehicleId: d.vehicleId,
         routeId: route?.id ?? d.routeId,
-        counterparty: d.customer || "Заказчик",
-        comment: commentParts.join(" · "),
-        importKey: d.importKey,
-      };
-    });
+        counterparty: d.customer || "Клиент",
+        comment: [orderLabel, routeLabel, ...extras].filter(Boolean).join(" · "),
+        importKey: d.orderNo ? orderTxKey(d.orderNo, ORDER_INCOME_CATEGORY) : d.importKey,
+      });
+    }
+    if (d.carrierAmount != null) {
+      transactions.push({
+        id: uid("tx"),
+        type: "expense",
+        date: d.date,
+        amount: d.carrierAmount,
+        categoryId: ORDER_CARRIER_CATEGORY,
+        vehicleId: d.vehicleId,
+        routeId: route?.id ?? d.routeId,
+        counterparty: d.carrier || "Исполнитель",
+        comment: [orderLabel, routeLabel, d.driver ? `водитель ${d.driver}` : ""]
+          .filter(Boolean)
+          .join(" · "),
+        importKey: d.orderNo ? orderTxKey(d.orderNo, ORDER_CARRIER_CATEGORY) : undefined,
+      });
+    }
+    if (d.dispatchAmount != null) {
+      transactions.push({
+        id: uid("tx"),
+        type: "expense",
+        date: d.date,
+        amount: d.dispatchAmount,
+        categoryId: ORDER_DISPATCH_CATEGORY,
+        vehicleId: d.vehicleId,
+        routeId: route?.id ?? d.routeId,
+        counterparty: d.carrier || "Диспетчер",
+        comment: [orderLabel, routeLabel, "диспетчер"].filter(Boolean).join(" · "),
+        importKey: d.orderNo ? orderTxKey(d.orderNo, ORDER_DISPATCH_CATEGORY) : undefined,
+      });
+    }
+  }
 
   return { routes, transactions };
+}
+
+function looksLikeSpreadsheet(bytes: Uint8Array): boolean {
+  if (bytes.length < 4) return false;
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return true;
+  if (bytes[0] === 0xd0 && bytes[1] === 0xcf) return true;
+  return false;
+}
+
+export function decodeTableText(bytes: Uint8Array): string {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder("utf-8").decode(bytes.subarray(3));
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1251").decode(bytes);
+  }
+}
+
+function detectDelimiter(text: string): string {
+  const head = text.split(/\r?\n/, 4).join("\n");
+  const semi = (head.match(/;/g) ?? []).length;
+  const comma = (head.match(/,/g) ?? []).length;
+  return semi > comma ? ";" : ",";
+}
+
+export function workbookRowsFromBytes(data: ArrayBuffer | Uint8Array): {
+  rows: unknown[][];
+  sheet: string;
+} {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (looksLikeSpreadsheet(bytes)) {
+    const wb = XLSX.read(bytes, { type: "array", cellDates: true, codepage: 1251 });
+    const sheet = wb.SheetNames[0] ?? "";
+    if (!sheet) return { rows: [], sheet: "" };
+    return {
+      sheet,
+      rows: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], {
+        header: 1,
+        raw: true,
+        defval: "",
+      }),
+    };
+  }
+  const text = decodeTableText(bytes);
+  const wb = XLSX.read(text, { type: "string", FS: detectDelimiter(text), raw: true });
+  const sheet = wb.SheetNames[0] ?? "";
+  if (!sheet) return { rows: [], sheet: "" };
+  return {
+    sheet,
+    rows: XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], {
+      header: 1,
+      raw: true,
+      defval: "",
+    }),
+  };
 }
 
 export function parseTripWorkbook(
@@ -292,17 +485,10 @@ export function parseTripWorkbook(
   routes: RoutePlan[],
   existingKeys: Set<string>,
 ): { drafts: TripDraft[]; columns: Partial<Record<TripColumn, number>>; sheet: string } {
-  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const wb = XLSX.read(bytes, { type: "array", cellDates: true });
-  const sheet = wb.SheetNames[0];
-  if (!sheet) {
-    return { drafts: [], columns: {}, sheet: "" };
+  const { rows, sheet } = workbookRowsFromBytes(data);
+  if (!sheet || rows.length === 0) {
+    return { drafts: [], columns: {}, sheet };
   }
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], {
-    header: 1,
-    raw: true,
-    defval: "",
-  });
   const headerIndex = findTripHeaderRow(rows);
   const columns = detectTripColumns(rows[headerIndex] ?? []);
   const body = rows.slice(headerIndex + 1);
@@ -314,63 +500,84 @@ export function parseTripWorkbook(
 }
 
 export const TRIP_TEMPLATE_HEADERS = [
-  "Дата",
-  "Маршрут",
-  "Откуда",
-  "Куда",
-  "Госномер",
-  "Км",
-  "Стоимость",
-  "Рейсов в месяц",
-  "Заказчик",
+  "№",
+  "Период заказа",
+  "Клиент",
+  "Загрузка",
+  "Разгрузка",
   "Груз",
+  "Мест",
+  "Объем",
+  "Вес",
+  "Исполнитель",
+  "Водитель",
+  "Сумма",
+  "Исполнителю",
+  "Диспетчеру",
+  "Прибыль",
 ] as const;
 
 export function buildTripTemplateWorkbook(): XLSX.WorkBook {
   const rows = [
+    ["Сводный отчет по выбранным заказам", ...Array(TRIP_TEMPLATE_HEADERS.length - 1).fill("")],
     [...TRIP_TEMPLATE_HEADERS],
     [
-      "12.09.2026",
-      "Москва — Санкт-Петербург",
-      "Москва",
-      "Санкт-Петербург",
-      "А123ВС777",
-      710,
+      "23856",
+      "01.08.2026 00:00 — 04.08.2026 00:00",
+      'ООО "ТЭК "ЛИДЕРТРАНС"',
+      "г.Домодедово",
+      "г.Екатеринбург",
+      "Инструменты",
+      "",
+      "",
+      20,
+      'ООО "ЛК "В ТОЧКУ Б"',
+      "Рыбалко Валерий Андреевич",
+      180000,
+      160000,
+      0,
+      20000,
+    ],
+    [
+      "23860",
+      "03.08.2026 00:00 — 04.08.2026 00:00",
+      'ООО "Уральский Завод Трубной Изоляции"',
+      "2833 Полевской Восточный промышленный район 3/5",
+      "Омск ул.70 лет Октября 13\\2",
+      "Труба ППУ",
+      "",
+      "",
+      20,
+      'ООО "ЛК "В ТОЧКУ Б"',
+      "Даренко Иван Иванович",
       110000,
-      12,
-      "ООО «Северсталь-Логистик»",
-      "Металлопрокат",
+      100000,
+      0,
+      10000,
     ],
     [
-      "13.09.2026",
-      "Москва — Казань",
+      "24031",
+      "31.08.2026 00:00 — 00:00",
+      'ООО "ПЗПТ"',
+      "317/08 Первоуральск УМПЦ Ревда",
+      "Полевской",
+      "Труба ППУ",
       "",
       "",
-      "В456ОР777",
-      820,
-      125000,
-      10,
-      "АО «РусАгро»",
-      "Сборный груз",
+      20,
+      'ООО "Терминал"',
+      "Погудин Андрей",
+      33000,
+      0,
+      33000,
+      0,
     ],
-    [
-      "14.09.2026",
-      "Москва-Нижний Новгород",
-      "Москва",
-      "Нижний Новгород",
-      "C789TT777",
-      420,
-      68000,
-      "",
-      "ООО «МегаСтрой»",
-      "",
-    ],
-    ["", "ЦФО, сборные грузы", "Подольск", "Регион", "К567ММ50", 280, 32000, 18, "", "только маршрут"],
+    ["", "", "", "", "", "", "", "", "", "", "", 323000, 260000, 33000, 30000],
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = TRIP_TEMPLATE_HEADERS.map(() => ({ wch: 22 }));
+  ws["!cols"] = TRIP_TEMPLATE_HEADERS.map(() => ({ wch: 24 }));
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Перевозки");
+  XLSX.utils.book_append_sheet(wb, ws, "Заказы");
   return wb;
 }
 
@@ -386,5 +593,16 @@ export function parseTripTemplateExample(
 
 export function downloadTripTemplate() {
   const wb = buildTripTemplateWorkbook();
-  XLSX.writeFile(wb, "perevozki-severtrans.xlsx");
+  XLSX.writeFile(wb, "svodnyj-otchet-zakazy.xlsx");
+}
+
+export function collectTripImportKeys(transactions: { importKey?: string }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const tx of transactions) {
+    if (!tx.importKey) continue;
+    keys.add(tx.importKey);
+    const order = tx.importKey.match(/^(order\|[^|]+)/);
+    if (order) keys.add(order[1]);
+  }
+  return keys;
 }

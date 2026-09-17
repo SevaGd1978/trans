@@ -35,6 +35,8 @@ export const CATEGORIES: Category[] = [
   { id: "inc-rent", name: "Аренда транспорта", kind: "income", group: "Выручка" },
   { id: "inc-other", name: "Прочие доходы", kind: "income", group: "Выручка" },
   { id: "exp-fuel", name: "ГСМ (дизель)", kind: "expense", group: "Переменные" },
+  { id: "exp-carrier", name: "Оплата исполнителям", kind: "expense", group: "Переменные" },
+  { id: "exp-dispatch", name: "Диспетчерам", kind: "expense", group: "Переменные" },
   { id: "exp-tolls", name: "Платон и платные дороги", kind: "expense", group: "Переменные" },
   { id: "exp-salary-drivers", name: "Зарплата водителей", kind: "expense", group: "Персонал" },
   { id: "exp-salary-shop", name: "Зарплата сервиса и офиса", kind: "expense", group: "Персонал" },
@@ -226,6 +228,8 @@ function makeBudget(): BudgetLine[] {
     "inc-rent": 1_440_000,
     "inc-other": 360_000,
     "exp-fuel": fuelBudget(),
+    "exp-carrier": 48_000_000,
+    "exp-dispatch": 4_320_000,
     "exp-tolls": 2_160_000,
     "exp-salary-drivers": 14_880_000,
     "exp-salary-shop": 5_280_000,
@@ -477,6 +481,32 @@ function makeTransactions(rand: Rand): Transaction[] {
   }
 
   return tx.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function mergeCategories(saved?: Category[]): Category[] {
+  const extras = (saved ?? []).filter((c) => !CATEGORIES.some((known) => known.id === c.id));
+  return [...CATEGORIES, ...extras];
+}
+
+export function ensureCategoryBudget(
+  budget: BudgetLine[],
+  categories: Category[],
+  years: number[],
+): BudgetLine[] {
+  const next = [...budget];
+  for (const year of years) {
+    for (const category of categories) {
+      if (!next.some((line) => line.year === year && line.categoryId === category.id)) {
+        next.push({
+          id: uid("b"),
+          categoryId: category.id,
+          year,
+          months: emptyMonths(),
+        });
+      }
+    }
+  }
+  return next;
 }
 
 export const DEFAULT_ACCESS_PASSWORD = "magistral";

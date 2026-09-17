@@ -36,8 +36,8 @@ export function SettingsPage() {
       <div className="rounded-3xl border border-line bg-white p-6">
         <h2 className="text-lg font-bold">Реквизиты</h2>
         <p className="mb-4 text-sm text-muted">
-          Данные хранятся в браузере. Учебная компания «СеверТранс» уже заполнена, её можно заменить
-          на свою.
+          Данные хранятся в браузере. Загрузите сводный отчёт 1С в журнале или на маршрутах. Учебную
+          компанию «СеверТранс» можно заменить на свою.
         </p>
         <form
           className="space-y-3"

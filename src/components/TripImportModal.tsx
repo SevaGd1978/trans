@@ -1,7 +1,8 @@
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { useRef, useState } from "react";
-import { money, numberRu } from "../lib/format";
+import { money } from "../lib/format";
 import {
+  collectTripImportKeys,
   downloadTripTemplate,
   draftsToTripImport,
   parseTripTemplateExample,
@@ -36,10 +37,9 @@ export function TripImportModal({
   const [busy, setBusy] = useState(false);
 
   const existingKeys = (() => {
-    const keys = new Set<string>();
+    const keys = collectTripImportKeys(transactions);
     for (const tx of transactions) {
-      if (tx.importKey) keys.add(tx.importKey);
-      if (tx.categoryId !== "inc-freight") continue;
+      if (tx.categoryId !== "inc-freight" || tx.importKey?.startsWith("order|")) continue;
       const route = routes.find((r) => r.id === tx.routeId);
       const plate = vehicles.find((v) => v.id === tx.vehicleId)?.plate ?? "";
       keys.add(
@@ -64,10 +64,16 @@ export function TripImportModal({
   };
 
   const ready = drafts.filter((d) => d.errors.length === 0 && !d.duplicate);
-  const tripReady = ready.filter((d) => d.date && d.amount != null);
+  const tripReady = ready.filter((d) => d.date);
   const routeOnly = ready.filter((d) => !d.date);
   const blocked = drafts.length - ready.length;
   const amountTotal = tripReady.reduce((a, d) => a + (d.amount ?? 0), 0);
+  const carrierTotal = tripReady.reduce((a, d) => a + (d.carrierAmount ?? 0), 0);
+  const dispatchTotal = tripReady.reduce((a, d) => a + (d.dispatchAmount ?? 0), 0);
+  const profitTotal = amountTotal - carrierTotal - dispatchTotal;
+  const opsCount = tripReady.reduce((a, d) => {
+    return a + (d.amount ? 1 : 0) + (d.carrierAmount ? 1 : 0) + (d.dispatchAmount ? 1 : 0);
+  }, 0);
 
   async function onFile(file: File) {
     setResult(null);
@@ -76,10 +82,11 @@ export function TripImportModal({
     try {
       const data = await file.arrayBuffer();
       const parsed = parseTripWorkbook(data, vehicles, routes, existingKeys);
-      if (!parsed.columns.amount && !parsed.columns.route && !parsed.columns.from) {
+      const cols = parsed.columns;
+      if (!cols.amount && !cols.carrierAmount && !cols.from && !cols.orderNo) {
         setDrafts([]);
         setError(
-          "Не найдены колонки маршрута и стоимости. Нужны «Откуда»/«Куда» или «Маршрут» и «Стоимость». Скачайте шаблон.",
+          "Не найден сводный отчёт 1С. Нужны колонки «№», «Загрузка», «Разгрузка», «Сумма», «Исполнителю», «Диспетчеру».",
         );
         setFileName(file.name);
         return;
@@ -87,11 +94,11 @@ export function TripImportModal({
       setFileName(file.name);
       setDrafts(parsed.drafts);
       if (parsed.drafts.length === 0) {
-        setError("В файле нет строк с перевозками.");
+        setError("В файле нет строк с заказами.");
       }
     } catch {
       setDrafts([]);
-      setError("Не удалось прочитать файл. Нужен Excel (.xlsx) или CSV с заголовками.");
+      setError("Не удалось прочитать файл. Нужен CSV (Windows-1251) или Excel со сводным отчётом по заказам.");
     } finally {
       setBusy(false);
     }
@@ -100,7 +107,7 @@ export function TripImportModal({
   return (
     <Modal
       open={open}
-      title="Импорт перевозок из Excel"
+      title="Импорт сводного отчёта 1С"
       onClose={() => {
         reset();
         onClose();
@@ -109,9 +116,10 @@ export function TripImportModal({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Таблица рейсов: дата, маршрут (или откуда/куда), госномер, километраж, стоимость, заказчик.
-          Строка с датой попадает в журнал как выручка «Грузоперевозки». Без даты — только справочник
-          маршрутов.
+          Файл «Сводный отчет по выбранным заказам»: номер, период, клиент, загрузка / разгрузка,
+          исполнитель, водитель, сумма, исполнителю, диспетчеру. Госномер не нужен. Каждый заказ
+          даёт выручку и расходы перевозчику и диспетчеру. Повторная загрузка того же № пропускается.
+          Строка итогов не импортируется.
         </p>
 
         <div className="flex flex-wrap gap-2">
@@ -122,7 +130,7 @@ export function TripImportModal({
             type="button"
             onClick={() => {
               const parsed = parseTripTemplateExample(vehicles, routes, existingKeys);
-              setFileName("пример-перевозки.xlsx");
+              setFileName("пример-заказы-1с.xlsx");
               setError("");
               setResult(null);
               setDrafts(parsed.drafts);
@@ -145,14 +153,14 @@ export function TripImportModal({
           }}
         >
           <Upload className="mb-2 text-accent" size={28} />
-          <div className="font-semibold">Перетащите .xlsx сюда</div>
+          <div className="font-semibold">Перетащите .csv или .xlsx сюда</div>
           <div className="mt-1 text-sm text-muted">
-            {fileName || "Или нажмите, чтобы открыть файл"}
+            {fileName || "Или нажмите, чтобы открыть сводный отчёт"}
           </div>
           <input
             ref={fileRef}
             type="file"
-            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -166,37 +174,46 @@ export function TripImportModal({
 
         {drafts.length > 0 ? (
           <>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl bg-teal-2/70 p-3">
-                <div className="text-xs uppercase tracking-wider text-muted">Рейсов в журнал</div>
+                <div className="text-xs uppercase tracking-wider text-muted">Заказов</div>
                 <div className="num text-xl font-bold">{tripReady.length}</div>
               </div>
               <div className="rounded-2xl bg-paper-2 p-3">
-                <div className="text-xs uppercase tracking-wider text-muted">Стоимость</div>
+                <div className="text-xs uppercase tracking-wider text-muted">Сумма</div>
                 <div className="num text-xl font-bold">{money(amountTotal)}</div>
               </div>
               <div className="rounded-2xl bg-[#f7e6d8] p-3">
-                <div className="text-xs uppercase tracking-wider text-muted">Только маршруты</div>
-                <div className="num text-xl font-bold">{routeOnly.length}</div>
+                <div className="text-xs uppercase tracking-wider text-muted">Исполнителям</div>
+                <div className="num text-xl font-bold">{money(carrierTotal)}</div>
+              </div>
+              <div className="rounded-2xl bg-paper-2 p-3">
+                <div className="text-xs uppercase tracking-wider text-muted">Прибыль</div>
+                <div className="num text-xl font-bold">{money(profitTotal)}</div>
+                <div className="text-xs text-muted">Диспетчерам {money(dispatchTotal)}</div>
               </div>
             </div>
             {blocked > 0 ? (
               <p className="text-sm text-muted">
-                {blocked} строк пропущены: ошибки, нет пунктов маршрута или рейс уже загружен.
+                {blocked} строк пропущены: ошибки или заказ с таким № уже загружен.
               </p>
+            ) : null}
+            {routeOnly.length > 0 ? (
+              <p className="text-sm text-muted">{routeOnly.length} строк только в справочник маршрутов.</p>
             ) : null}
 
             <div className="max-h-80 overflow-auto rounded-2xl border border-line bg-white">
-              <table className="min-w-[980px] w-full text-sm">
+              <table className="min-w-[1100px] w-full text-sm">
                 <thead className="sticky top-0 bg-paper-2 text-left text-xs uppercase tracking-wider text-muted">
                   <tr>
                     <th className="px-3 py-2">Статус</th>
-                    <th className="px-3 py-2">Дата</th>
+                    <th className="px-3 py-2">№</th>
+                    <th className="px-3 py-2">Период</th>
                     <th className="px-3 py-2">Маршрут</th>
-                    <th className="px-3 py-2">ТС</th>
-                    <th className="px-3 py-2 text-right">Км</th>
-                    <th className="px-3 py-2 text-right">Стоимость</th>
-                    <th className="px-3 py-2">Заказчик</th>
+                    <th className="px-3 py-2">Клиент / исполнитель</th>
+                    <th className="px-3 py-2 text-right">Сумма</th>
+                    <th className="px-3 py-2 text-right">Исполнителю</th>
+                    <th className="px-3 py-2 text-right">Диспетчеру</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -215,29 +232,33 @@ export function TripImportModal({
                                   : "bg-teal-2 text-teal"
                             }`}
                           >
-                            {bad ? "ошибка" : skip ? "уже есть" : d.date ? "рейс" : "маршрут"}
+                            {bad ? "ошибка" : skip ? "уже есть" : d.date ? "заказ" : "маршрут"}
                           </span>
                           <div className="mt-1 text-xs text-muted">
                             {[...d.errors, ...d.warnings].join(". ")}
                           </div>
                         </td>
+                        <td className="num px-3 py-2">{d.orderNo || "—"}</td>
                         <td className="num px-3 py-2">{d.date ?? "—"}</td>
                         <td className="px-3 py-2">
                           <div className="font-medium">{d.routeName || `${d.from} — ${d.to}`}</div>
                           <div className="text-xs text-muted">
                             {d.from} → {d.to}
+                            {d.driver ? ` · ${d.driver}` : ""}
                           </div>
                         </td>
-                        <td className="px-3 py-2">{d.vehiclePlate ?? (d.plateRaw || "—")}</td>
-                        <td className="num px-3 py-2 text-right">
-                          {d.distanceKm != null ? numberRu(d.distanceKm) : "—"}
+                        <td className="px-3 py-2">
+                          <div>{d.customer || "—"}</div>
+                          <div className="text-xs text-muted">{d.carrier || d.cargo || "—"}</div>
                         </td>
                         <td className="num px-3 py-2 text-right">
                           {d.amount != null ? money(d.amount) : "—"}
                         </td>
-                        <td className="px-3 py-2">
-                          <div>{d.customer || "—"}</div>
-                          {d.cargo ? <div className="text-xs text-muted">{d.cargo}</div> : null}
+                        <td className="num px-3 py-2 text-right">
+                          {d.carrierAmount != null ? money(d.carrierAmount) : "—"}
+                        </td>
+                        <td className="num px-3 py-2 text-right">
+                          {d.dispatchAmount != null ? money(d.dispatchAmount) : "—"}
                         </td>
                       </tr>
                     );
@@ -250,7 +271,7 @@ export function TripImportModal({
 
         {result ? (
           <p className="rounded-xl bg-teal-2 px-3 py-2 text-sm text-teal">
-            В журнал: {result.tripsAdded} рейсов. Маршрутов новых: {result.routesAdded}, обновлено:{" "}
+            В журнал: {result.tripsAdded} операций. Маршрутов новых: {result.routesAdded}, обновлено:{" "}
             {result.routesUpdated}
             {result.skipped ? `. Пропущено ${result.skipped}` : ""}.
           </p>
@@ -280,7 +301,7 @@ export function TripImportModal({
           >
             <span className="inline-flex items-center gap-2">
               <FileSpreadsheet size={16} />
-              Загрузить {ready.length ? ready.length : ""} строк
+              Загрузить {tripReady.length ? `${tripReady.length} заказов / ${opsCount} оп.` : "заказы"}
             </span>
           </PrimaryButton>
         </div>

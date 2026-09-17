@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createEmpty, createSeed, DEFAULT_ACCESS_PASSWORD } from "./data/seed";
+import {
+  createEmpty,
+  createSeed,
+  DEFAULT_ACCESS_PASSWORD,
+  ensureCategoryBudget,
+  mergeCategories,
+} from "./data/seed";
 import { emptyMonths, fuelCost, spreadEven } from "./lib/calc";
 import { uid } from "./lib/format";
 import { placeKey } from "./lib/tripImport";
@@ -207,9 +213,14 @@ export const useApp = create<AppState & Actions>()(
       name: "magistral-budget-v3",
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<AppState>;
+        const categories = mergeCategories(saved.categories);
+        const years = new Set<number>([current.year, saved.year ?? current.year]);
+        for (const line of saved.budget ?? current.budget) years.add(line.year);
         return {
           ...current,
           ...saved,
+          categories,
+          budget: ensureCategoryBudget(saved.budget ?? current.budget, categories, [...years]),
           accessPassword: saved.accessPassword || DEFAULT_ACCESS_PASSWORD,
         };
       },

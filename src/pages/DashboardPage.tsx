@@ -16,6 +16,7 @@ import { StatCard } from "../components/Layout";
 import { elapsedMonth, monthlySeries, totals, yearTransactions, budgetMap, byCategory, executionPercent } from "../lib/calc";
 import { money, moneyCompact, VEHICLE_STATUS_LABEL } from "../lib/format";
 import { fuelTransactions, vehicleFuelSummaries } from "../lib/fuelStats";
+import { ORDER_INCOME_CATEGORY, summarizeOrders, topCounterparties } from "../lib/orderStats";
 import { useApp } from "../store";
 import { MONTHS } from "../types";
 
@@ -75,6 +76,11 @@ export function DashboardPage() {
       `Расход выше нормы: ${fuelOver.map((s) => s.vehicle.plate).join(", ")}. Смотрите заправки.`,
     );
   }
+  const orders = summarizeOrders(yearTx);
+  if (orders.count && orders.profit < 0) {
+    alerts.push(`По заказам 1С убыток ${money(orders.profit)}: исполнители и диспетчеры съели выручку.`);
+  }
+  const clients = topCounterparties(yearTx, ORDER_INCOME_CATEGORY, 5);
 
   const monthNow = elapsedMonth(year);
   const ytdPlanExpense = expenseCats.reduce((acc, id) => {
@@ -96,12 +102,13 @@ export function DashboardPage() {
           {companyName || "Новая компания"}
         </h2>
         <p className="mt-2 max-w-2xl text-sm text-muted">
-          {inn ? `ИНН ${inn}` : "ИНН не указан"} · дизель {fuelPrice.toLocaleString("ru-RU")} ₽/л ·{" "}
-          {vehicles.length} единиц техники · {routes.length} маршрутов. План и факт за {year} год.
+          {inn ? `ИНН ${inn}` : "ИНН не указан"} · сводный отчёт 1С по заказам · дизель{" "}
+          {fuelPrice.toLocaleString("ru-RU")} ₽/л · {vehicles.length} единиц техники · {routes.length}{" "}
+          направлений. План и факт за {year} год.
         </p>
         <div className="mt-5 flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full bg-paper-2 px-3 py-1">Магистральные тягачи</span>
-          <span className="rounded-full bg-paper-2 px-3 py-1">ГСМ из пробега</span>
+          <span className="rounded-full bg-paper-2 px-3 py-1">Заказы 1С</span>
+          <span className="rounded-full bg-paper-2 px-3 py-1">Исполнителю / диспетчеру</span>
           <span className="rounded-full bg-paper-2 px-3 py-1">План-факт по статьям</span>
         </div>
       </section>
@@ -130,6 +137,41 @@ export function DashboardPage() {
           hint="Факт / годовой бюджет расходов"
         />
       </section>
+
+      {orders.count > 0 ? (
+        <section className="rounded-3xl border border-line bg-white p-5">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="font-bold">Сводный отчёт по заказам</h3>
+              <p className="text-sm text-muted">Импорт из 1С за {year} год: сумма, исполнителю, диспетчеру</p>
+            </div>
+            <Link to="/ledger" className="text-sm font-semibold text-accent">
+              Журнал операций
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Заказов" value={String(orders.count)} />
+            <StatCard label="Сумма" value={moneyCompact(orders.income)} tone="accent" />
+            <StatCard label="Исполнителям" value={moneyCompact(orders.carrier)} />
+            <StatCard label="Диспетчерам" value={moneyCompact(orders.dispatch)} />
+            <StatCard
+              label="Прибыль"
+              value={moneyCompact(orders.profit)}
+              tone={orders.profit >= 0 ? "good" : "bad"}
+            />
+          </div>
+          {clients.length > 0 ? (
+            <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {clients.map((c) => (
+                <li key={c.name} className="flex items-center justify-between gap-2 rounded-xl bg-paper-2 px-3 py-2 text-sm">
+                  <span className="truncate">{c.name}</span>
+                  <span className="num shrink-0 text-muted">{moneyCompact(c.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
         <div className="rounded-3xl border border-line bg-white p-5">
