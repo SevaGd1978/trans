@@ -48,6 +48,8 @@ export function PasswordModal({
           <input
             className={inputClass}
             type="password"
+            name="lock-password"
+            autoFocus
             autoComplete="current-password"
             value={value}
             onChange={(e) => {
