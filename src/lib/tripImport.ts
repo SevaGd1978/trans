@@ -233,7 +233,7 @@ export function buildTripDrafts(
     const date = parseDate(cell(row, columns.period)) ?? parseDate(cell(row, columns.date));
     const plateRaw = String(cell(row, columns.plate) ?? "").trim();
     const distanceKm = parseNumber(cell(row, columns.distance));
-    const amount = moneyPositive(parseNumber(cell(row, columns.amount)));
+    const amount = parseNumber(cell(row, columns.amount));
     const carrierAmount = moneyPositive(parseNumber(cell(row, columns.carrierAmount)));
     const dispatchAmount = moneyPositive(parseNumber(cell(row, columns.dispatchAmount)));
     const profit = parseNumber(cell(row, columns.profit));
@@ -257,8 +257,9 @@ export function buildTripDrafts(
 
     if (!from && !to) errors.push("Нет загрузки и разгрузки");
     if (amount == null && carrierAmount == null && dispatchAmount == null) {
-      if (orderNo) warnings.push("Нулевые суммы по заказу");
-      else errors.push("Нет сумм по заказу");
+      errors.push("Нет сумм по заказу");
+    } else if (!amount && !carrierAmount && !dispatchAmount && orderNo) {
+      warnings.push("Нулевые суммы по заказу");
     }
     if (amount != null && amount < 0) errors.push("Сумма не может быть отрицательной");
     if (carrierAmount != null && carrierAmount < 0) errors.push("Оплата исполнителю не может быть отрицательной");
